@@ -1,0 +1,15 @@
+[package]
+name = "AstrancE"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+riscv = { git = "https://github.com/rcore-os/riscv", features = ["inline-asm"] }
+bitflags = "2.8.0"
+sbi-rt = "0.0.3"
+sbi-spec = "0.0.8"
+
+[profile.release]
+debug = true
+opt-level = 0
