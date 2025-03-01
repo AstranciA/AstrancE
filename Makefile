@@ -69,6 +69,9 @@ qemu-version-check:
 run-inner: qemu-version-check build
 	@qemu-system-riscv64 $(QEMU_ARGS)
 
+run-only: qemu-version-check
+	@qemu-system-riscv64 $(QEMU_ARGS)
+
 debug: qemu-version-check build
 	@tmux new-session -d \
 		"qemu-system-riscv64 $(QEMU_ARGS) -s -S" && \
@@ -76,6 +79,9 @@ debug: qemu-version-check build
 		tmux -2 attach-session -d
 
 gdbserver: qemu-version-check build
+	@qemu-system-riscv64 $(QEMU_ARGS) -s -S
+
+gdbserver-run-only: qemu-version-check
 	@qemu-system-riscv64 $(QEMU_ARGS) -s -S
 
 gdbclient:

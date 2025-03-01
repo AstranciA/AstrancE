@@ -1,0 +1,21 @@
+version = "0.9.0"
+
+[assemblers]
+gas = true
+go = false
+z80 = false
+masm = false
+nasm = false
+
+[instruction_sets]
+x86 = false
+x86_64 = false
+z80 = false
+arm = false
+arm64 = false
+riscv = true
+
+[opts]
+compiler = "riscv64-unknown-elf-gcc" # need "cc" as the first argument in `compile_flags.txt`
+diagnostics = true
+default_diagnostics = true

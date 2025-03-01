@@ -9,7 +9,10 @@ riscv = { git = "https://github.com/rcore-os/riscv", features = ["inline-asm"] }
 bitflags = "2.8.0"
 sbi-rt = "0.0.3"
 sbi-spec = "0.0.8"
+lazy_static = {version = "1.5.0", features = ["spin_no_std"]}
+num_enum = { version = "0.7.3", default-features = false }
 
 [profile.release]
 debug = true
 opt-level = 0
+lto = false

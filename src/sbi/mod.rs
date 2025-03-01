@@ -2,7 +2,7 @@ use core::ascii;
 
 use sbi_rt::*;
 
-pub fn put_char(c: ascii::Char) -> SbiRet{
+pub fn put_char(c: ascii::Char) -> SbiRet {
     sbi_rt::console_write_byte(c.to_u8())
 }
 
@@ -13,4 +13,8 @@ pub fn shutdown(failure: bool) -> ! {
         system_reset(Shutdown, SystemFailure);
     }
     unreachable!();
+}
+
+pub fn set_timer(timer: usize) -> SbiRet {
+    sbi_rt::set_timer(timer as _)
 }
