@@ -2,10 +2,11 @@
 name = "AstrancE"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.85"
 
 
 [dependencies]
-riscv = { git = "https://github.com/rcore-os/riscv", features = ["inline-asm"] }
+riscv = "0.13.0"
 bitflags = "2.8.0"
 sbi-rt = "0.0.3"
 sbi-spec = "0.0.8"
