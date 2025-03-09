@@ -1,4 +1,4 @@
-use crate::arch::{Reg, SavedRegs};
+use crate::{arch::{Reg, SavedRegs}, trap::trap_return};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -22,7 +22,7 @@ impl TaskContext {
             fn __restore();
         }
         Self {
-            ra: __restore as Reg,
+            ra: trap_return as Reg,
             sp: kstack_ptr as Reg,
             s: SavedRegs::empty(),
         }

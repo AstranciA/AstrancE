@@ -5,20 +5,21 @@ mod info;
 #[allow(clippy::module_inception)]
 mod task;
 
-use core::ops::Add;
-
+use alloc::vec::Vec;
 pub use context::TaskContext;
 use info::TaskInfo;
 use lazy_static::lazy_static;
+use riscv::register::satp::Satp;
 use switch::__switch;
 use task::{TaskControlBlock, TaskStatus};
 
 use crate::{
     config::*,
-    loader::{get_base_i, get_num_app, init_app_cx},
+    loader::{get_app_data, get_num_app},
     sbi::shutdown,
     sync::UPSafeCell,
     timer::{get_time, get_time_ms},
+    trap::context::TrapContext,
 };
 
 pub struct TaskManager {
@@ -27,7 +28,7 @@ pub struct TaskManager {
 }
 
 pub struct TaskManagerInner {
-    pub tasks: [TaskControlBlock; MAX_APP_NUM],
+    pub tasks: Vec<TaskControlBlock>,
     pub start_time: usize,
     pub end_time: usize,
     current_task: usize,
@@ -35,23 +36,13 @@ pub struct TaskManagerInner {
 
 lazy_static! {
     pub static ref TASK_MANAGER: TaskManager = {
+        kprintln!("init TaskManager");
         let num_app = get_num_app();
-        let mut tasks = [TaskControlBlock {
-            task_cx: TaskContext::zero_init(),
-            task_status: TaskStatus::UnInit,
-            task_info: None,
-            last_run_time: 0,
-            last_suspend_time: 0,
-        }; MAX_APP_NUM];
+        kprintln!("num_app: {}", num_app);
+        let mut tasks: Vec<TaskControlBlock> = Vec::with_capacity(num_app);
 
-        for (i, task) in tasks.iter_mut().enumerate() {
-            task.task_cx = TaskContext::prepare_restore(init_app_cx(i) as *const usize);
-            task.task_status = TaskStatus::Ready;
-            task.task_info = Some(TaskInfo::new(
-                i,
-                get_base_i(i),
-                get_base_i(i) + APP_SIZE_LIMIT,
-            ));
+        for i in 0..num_app {
+            tasks.push(TaskControlBlock::new(get_app_data(i), i));
         }
         TaskManager {
             num_app,
@@ -74,10 +65,10 @@ impl TaskManager {
         let next_task_ptr = &task0.task_cx as *const TaskContext;
         drop(inner);
 
-        let mut _unused = TaskContext::zero_init();
+        let mut unused = TaskContext::zero_init();
 
         unsafe {
-            __switch(&mut _unused as *mut TaskContext, next_task_ptr);
+            __switch(&mut unused as *mut TaskContext, next_task_ptr);
         }
         panic!("unreachable in run_first_task!");
     }
@@ -126,14 +117,13 @@ impl TaskManager {
             inner.end_time = get_time();
             let task_cpu_time: usize = inner
                 .tasks
-                .as_ref()
                 .iter()
                 .map(|task| task.task_info.unwrap().cpu_time)
                 .sum();
             info!("Task CPU time: {} ms", task_cpu_time);
             info!(
                 "Effeciency: {:.2} %",
-                task_cpu_time *100 / (inner.end_time - inner.start_time) 
+                task_cpu_time * 100 / (inner.end_time - inner.start_time)
             );
 
             kprintln!("All applications completed!");
@@ -143,6 +133,18 @@ impl TaskManager {
 
     pub fn get_current_task_id(&self) -> usize {
         self.inner.access().current_task
+    }
+
+    fn get_current_token(&self) -> Satp {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].get_user_token()
+    }
+
+    fn get_current_trap_cx(&self) -> &mut TrapContext {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].get_trap_cx()
     }
 
     pub fn get_task_info(&self, id: usize) -> Option<TaskInfo> {
@@ -191,4 +193,12 @@ pub fn exit_current_and_run_next() {
 }
 pub fn print_tasks_info() {
     TASK_MANAGER.print_tasks_info();
+}
+
+pub fn current_user_token() -> Satp {
+    TASK_MANAGER.get_current_token()
+}
+
+pub fn current_trap_cx() -> &'static mut TrapContext {
+    TASK_MANAGER.get_current_trap_cx()
 }

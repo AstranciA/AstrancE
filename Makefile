@@ -1,8 +1,8 @@
 # Building
-KERNAL_NAME := AstrancE
+KERNEL_NAME := AstrancE
 TARGET := riscv64gc-unknown-none-elf
 MODE := release
-KERNEL_ELF := target/$(TARGET)/$(MODE)/$(KERNAL_NAME)
+KERNEL_ELF := target/$(TARGET)/$(MODE)/$(KERNEL_NAME)
 KERNEL_BIN := $(KERNEL_ELF).bin
 DISASM_TMP := target/$(TARGET)/$(MODE)/asm
 

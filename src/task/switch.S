@@ -23,7 +23,7 @@ __switch:
         .set n, n + 1
     .endr
     # restore ra & s0~s11 of next execution
-    # and ra is __restore
+    # and initial ra is __restore
     ld ra, 0(a1)
     .set n, 0
     .rept 12
