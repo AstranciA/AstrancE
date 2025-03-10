@@ -20,17 +20,20 @@ mod config;
 mod console;
 mod sync;
 
+use aelog::Level;
+#[macro_use]
+use aelog::{AELogger, Appender};
 use mm::{
     address::{PhysAddr, VirtAddr, VirtPageNum},
     frame_allocator, heap_allocator,
     memory_set::KERNEL_SPACE,
 };
-use sbi::shutdown;
+use sbi::{put_str, shutdown};
 
 mod board;
 mod panic;
-mod stack_trace;
 mod sbi;
+mod stack_trace;
 mod timer;
 
 mod arch;
@@ -48,12 +51,29 @@ pub fn rust_main() {
     init();
 }
 
+struct ConsoleAppender;
+impl Appender for ConsoleAppender {
+    fn write(&self, _: &aelog::Record, formatted: alloc::string::String) {
+        put_str(formatted.as_str());
+    }
+}
+lazy_static! {
+    pub static ref LOGGER: AELogger<'static> = {
+        let mut logger = AELogger::default();
+        logger.add_appender(ConsoleAppender);
+        logger
+    };
+}
+
 fn init() {
     clear_bss();
     print_basic_info();
 
     init_mm();
 
+    aelog::init(&LOGGER).unwrap();
+    aelog::info!("AstrancaOS starting...");
+    aelog::info!("{}", include_str!("assets/logo2.txt"));
     task::print_tasks_info();
 
     trap::init();
@@ -84,7 +104,7 @@ extern "C" {
 }
 fn print_basic_info() {
     fn print_section_info(name: &str, start: usize, end: usize) {
-        kprintln!("{:8}: [{:#x}, {:#x})", name, start, end);
+        aelog::info!("{:8}: [{:#x}, {:#x})", name, start, end);
     }
     print_section_info(".text", stext as usize, etext as usize);
     print_section_info(".rodata", srodata as usize, erodata as usize);
@@ -97,42 +117,36 @@ pub fn remap_test() {
     let mid_text: VirtAddr = ((stext as usize + etext as usize) / 2).into();
     let mid_rodata: VirtAddr = ((srodata as usize + erodata as usize) / 2).into();
     let mid_data: VirtAddr = ((sdata as usize + edata as usize) / 2).into();
-    assert!(
-        !kernel_space
-            .page_table
-            .translate(mid_text.floor())
-            .unwrap()
-            .is_writable(),
-    );
-    assert!(
-        !kernel_space
-            .page_table
-            .translate(mid_rodata.floor())
-            .unwrap()
-            .is_writable(),
-    );
-    assert!(
-        !kernel_space
-            .page_table
-            .translate(mid_data.floor())
-            .unwrap()
-            .is_executable(),
-    );
+    assert!(!kernel_space
+        .page_table
+        .translate(mid_text.floor())
+        .unwrap()
+        .is_writable(),);
+    assert!(!kernel_space
+        .page_table
+        .translate(mid_rodata.floor())
+        .unwrap()
+        .is_writable(),);
+    assert!(!kernel_space
+        .page_table
+        .translate(mid_data.floor())
+        .unwrap()
+        .is_executable(),);
     //for ro_addr in stext as usize..etext as usize {
-        /*
-         *println!("{:x}", ro_addr);
-         *println!("{:x}", VirtPageNum(ro_addr).0);
-         */
-        //let ppn2 = kernel_space
-            //.page_table
-            //.translate(VirtAddr(ro_addr).floor())
-            //.unwrap()
-            //.ppn();
+    /*
+     *println!("{:x}", ro_addr);
+     *println!("{:x}", VirtPageNum(ro_addr).0);
+     */
+    //let ppn2 = kernel_space
+    //.page_table
+    //.translate(VirtAddr(ro_addr).floor())
+    //.unwrap()
+    //.ppn();
 
-        //let pa2 = PhysAddr::from(ppn2).0 | (ro_addr & 0xfff);
-        //let pa = ro_addr;
-        ////println!("pa2:0x{:x}, pa:0x{:x}", pa2, pa);
-        //assert_eq!(pa2, pa);
+    //let pa2 = PhysAddr::from(ppn2).0 | (ro_addr & 0xfff);
+    //let pa = ro_addr;
+    ////println!("pa2:0x{:x}, pa:0x{:x}", pa2, pa);
+    //assert_eq!(pa2, pa);
     //}
     /*
      *for v in kernel_space.page_table.frames.iter() {

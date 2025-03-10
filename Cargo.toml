@@ -6,6 +6,7 @@ rust-version = "1.85"
 
 
 [dependencies]
+aelog = {path= "./modules/aelog"}
 riscv = "0.13.0"
 bitflags = "2.8.0"
 sbi-rt = "0.0.3"
