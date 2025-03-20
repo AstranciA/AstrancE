@@ -52,6 +52,10 @@ pub fn syscall_handler(sys_id: usize, args: [usize; 6]) -> Result<isize,isize> {
             todo!()
         }
         Sysno::lseek => {
+            let fd = args[0] as c_int;
+            let offset = args[1] as ctypes::off_t;
+            let whence = args[2] as c_int;
+            let ret = syscall_imp::fs::ax_lseek(fd, offset, whence);
             todo!()
         }
         Sysno::mmap => {
