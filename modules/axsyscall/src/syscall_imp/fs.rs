@@ -1,11 +1,6 @@
 use arceos_posix_api::{self as api, ctypes};
 use core::ffi::c_char;
 use core::ffi::c_int;
-use axerrno::{LinuxError, LinuxResult};
-use axfs::fops::OpenOptions;
-use axio::{PollState, SeekFrom};
-use axsync::Mutex;
-
 
 pub fn ax_openat(dirfd: c_int,
                   filename: *const c_char,
