@@ -1,5 +1,4 @@
 use arceos_posix_api::UtsName;
-use axtask::current;
 
 use crate::{SyscallResult, ToLinuxResult};
 

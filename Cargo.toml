@@ -76,6 +76,11 @@ linkme = "0.3.32"
 [profile.release]
 lto = true
 
+[patch.crates-io]
+page_table_multiarch = { path = "./crates/page_table_multiarch/page_table_multiarch" }
+page_table_entry = { path = "./crates/page_table_multiarch/page_table_entry" }
+memory_set = { path = "./crates/axmm_crates/memory_set" }
+memory_addr = { path = "./crates/axmm_crates/memory_addr" }
 #[patch.crates-io]
 #page_table_multiarch = { git = "https://github.com/Mivik/page_table_multiarch.git", rev = "19ededd" }
 #page_table_entry = { git = "https://github.com/Mivik/page_table_multiarch.git", rev = "19ededd" }

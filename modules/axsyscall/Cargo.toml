@@ -16,12 +16,12 @@ fs = ["arceos_posix_api/fs", "dep:axfs"]
 fd = ["arceos_posix_api/fd"]
 net = ["arceos_posix_api/net"]
 pipe = ["arceos_posix_api/pipe"]
-multitask = ["arceos_posix_api/multitask"]
+multitask = ["arceos_posix_api/multitask", "axtask/multitask"]
 [dependencies]
 syscalls = { workspace = true }
 arceos_posix_api = { workspace = true }
 axerrno = "0.1"
-axhal = { workspace = true }
+axhal = { workspace = true, features = ["uspace"]}
 axtask = { workspace = true }
 axfs = { workspace = true, optional = true }
 axmm = { workspace = true }

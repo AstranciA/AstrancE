@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_macros)]
 
+#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 use axerrno::{LinuxError, LinuxResult};
 use core::ffi::{CStr, c_char};
@@ -20,6 +21,7 @@ pub fn char_ptr_to_str<'a>(str: *const c_char) -> LinuxResult<&'a str> {
 /// Convert a C string vector to a Rust string
 /// vector should be terminated by a null pointer
 /// e.g. char* argv[]
+#[cfg(feature = "alloc")]
 pub fn str_vec_ptr_to_str<'a>(strv: *const *const c_char) -> LinuxResult<Vec<&'a str>> {
     let mut strs = Vec::new();
     let mut ptr = strv;

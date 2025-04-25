@@ -125,12 +125,14 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     info!("Logging is enabled.");
     info!("Primary CPU {} started, dtb = {:#x}.", cpu_id, dtb);
 
-    if axhal::trap::SYSCALL.len() > 1 {
-        warn!("Multiple syscall handlers are registered");
-    }
-    if axhal::trap::PAGE_FAULT.len() > 1 {
-        warn!("Multiple page fault handlers are registered but we haven't support yet");
-    }
+    /*
+     *if axhal::trap::SYSCALL.len() > 1 {
+     *    warn!("Multiple syscall handlers are registered");
+     *}
+     *if axhal::trap::PAGE_FAULT.len() > 1 {
+     *    warn!("Multiple page fault handlers are registered but we haven't support yet");
+     *}
+     */
 
     info!("Found physcial memory regions:");
     for r in axhal::mem::memory_regions() {

@@ -5,14 +5,13 @@
 mod test;
 extern crate axlog;
 use axerrno::LinuxError;
-use syscall_imp::{
-    fs::{sys_chdir, sys_getdents},
-    sys::sys_uname,
-};
 mod syscall_imp;
 use arceos_posix_api::ctypes;
 use core::ffi::*;
 pub mod result;
+use syscall_imp::sys::sys_uname;
+#[cfg(all(feature = "fs", feature = "fd"))]
+use syscall_imp::fs::{sys_chdir, sys_getdents};
 pub use result::{SyscallResult, ToLinuxResult};
 
 #[macro_export]

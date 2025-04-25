@@ -10,8 +10,8 @@ repository = "https://github.com/arceos-org/arceos/tree/main/modules/axmm"
 documentation = "https://arceos-org.github.io/arceos/axmm/index.html"
 
 [features]
-RAII = ["memory_set/RAII", "memory_addr/RAII"]
-COW = ["RAII"]
+default = ["COW", "heap", "mmap"]
+COW = []
 heap = []
 mmap = ["memory_set/mmap"]
 
@@ -23,8 +23,8 @@ axconfig = { workspace = true }
 log = "=0.4.21"
 axerrno = "0.1"
 lazyinit = "0.2"
-memory_addr = { workspace = true }
-memory_set = { workspace = true }
+memory_addr = { workspace = true, features = ["RAII"] }
+memory_set = { workspace = true, features = ["RAII"] }
 kspin = "0.1"
-page_table_multiarch = "0.5"
+page_table_multiarch = { workspace = true }
 bitflags = { workspace = true }

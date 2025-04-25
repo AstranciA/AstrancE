@@ -4,7 +4,6 @@ use linkme::distributed_slice as def_trap_handler;
 use memory_addr::VirtAddr;
 use page_table_entry::MappingFlags;
 
-#[cfg(feature = "uspace")]
 use crate::arch::TrapFrame;
 
 pub use linkme::distributed_slice as register_trap_handler;

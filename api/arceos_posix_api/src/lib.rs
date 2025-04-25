@@ -18,7 +18,9 @@ extern crate alloc;
 mod utils;
 
 mod imp;
-pub use utils::{char_ptr_to_str, str_vec_ptr_to_str};
+pub use utils::char_ptr_to_str;
+#[cfg(feature = "alloc")]
+pub use utils::str_vec_ptr_to_str;
 
 /// Platform-specific constants and parameters.
 pub mod config {
