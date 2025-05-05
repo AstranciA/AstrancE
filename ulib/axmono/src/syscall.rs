@@ -9,7 +9,7 @@ use crate::{
     task::{self, time_stat_from_user_to_kernel, time_stat_ns, time_stat_output},
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
-use axhal::trap::{PRE_TRAP, register_trap_handler};
+use axhal::{arch::ITrapFrame, trap::{register_trap_handler, PRE_TRAP}};
 use arceos_posix_api::{self as api, char_ptr_to_str, get_file_like, str_vec_ptr_to_str, sys_read};
 use axerrno::{AxError, LinuxError};
 use axfs::{CURRENT_DIR, api::set_current_dir, fops::Directory};
@@ -160,8 +160,10 @@ syscall_handler_def!(
         }
 );
 
-#[register_trap_handler(PRE_TRAP)]
-fn pre_trap_handler(trap_frame: &TrapFrame) -> bool {
-    warn!("trap from 0x{:x?}", trap_frame.sepc);
-    true
-}
+/*
+ *#[register_trap_handler(PRE_TRAP)]
+ *fn pre_trap_handler(trap_frame: &TrapFrame) -> bool {
+ *    trace!("trap from 0x{:x?}", trap_frame.get_ip());
+ *    true
+ *}
+ */

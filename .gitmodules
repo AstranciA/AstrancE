@@ -4,3 +4,6 @@
 [submodule "crates/page_table_multiarch"]
 	path = crates/page_table_multiarch
 	url = git@github.com:AstranciA/page_table_multiarch.git
+[submodule "crates/fast-trap"]
+	path = crates/fast-trap
+	url = git@github.com:AstranciA/fast-trap.git

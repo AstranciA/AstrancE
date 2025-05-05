@@ -7,9 +7,9 @@ use core::{alloc::Layout, cell::UnsafeCell, fmt, ptr::NonNull};
 use core::sync::atomic::AtomicUsize;
 
 use kspin::SpinNoIrq;
-use memory_addr::{VirtAddr, align_up_4k};
+use memory_addr::{MemoryAddr, VirtAddr, VirtAddrRange, align_up_4k, va};
 
-use axhal::arch::TaskContext;
+use axhal::arch::{ITaskContext, TaskContext};
 #[cfg(feature = "tls")]
 use axhal::tls::TlsArea;
 
@@ -198,6 +198,35 @@ impl TaskInner {
             Some(s) => Some(s.top()),
             None => None,
         }
+    }
+
+    /// Returns the top address of the kernel stack.
+    #[inline]
+    pub const fn kernel_stack_bottom(&self) -> Option<VirtAddr> {
+        match &self.kstack {
+            Some(s) => Some(s.bottom()),
+            None => None,
+        }
+    }
+
+    /// Returns the address range of the kernel stack.
+    #[inline]
+    pub const fn kernel_stack_size(&self) -> Option<usize> {
+        match &self.kstack {
+            Some(s) => Some(s.size()),
+            None => None,
+        }
+    }
+
+    /// Returns the address range of the kernel stack.
+    #[inline]
+    pub fn kernel_stack_range(&self) -> Option<VirtAddrRange> {
+        if let Some(top) = self.kernel_stack_top() {
+            if let Some(bottom) = self.kernel_stack_bottom() {
+                return Some(VirtAddrRange::new(bottom, top));
+            }
+        }
+        None
     }
 
     /// Gets the cpu affinity mask of the task.
@@ -474,6 +503,14 @@ impl TaskStack {
 
     pub const fn top(&self) -> VirtAddr {
         unsafe { core::mem::transmute(self.ptr.as_ptr().add(self.layout.size())) }
+    }
+
+    pub const fn bottom(&self) -> VirtAddr {
+        unsafe { core::mem::transmute(self.ptr.as_ptr()) }
+    }
+
+    pub const fn size(&self) -> usize {
+        self.layout.size()
     }
 }
 

@@ -1,21 +1,32 @@
 #[macro_use]
 mod macros;
 
-mod context;
 mod trap;
+
+use core::ptr::NonNull;
 
 use memory_addr::{PhysAddr, VirtAddr};
 use riscv::asm;
-use riscv::register::{satp, sstatus, stvec};
+use riscv::register::{satp, sscratch, sstatus, stvec};
 
 #[cfg(feature = "uspace")]
-pub use self::context::UspaceContext;
-pub use self::context::{GeneralRegisters, TaskContext, TrapFrame};
+cfg_if::cfg_if! {
+    if #[cfg(feature = "fast-trap")] {
+        mod fast_context;
+        pub use fast_trap::FlowContext as TrapFrame;
+        use fast_trap::FreeTrapStack;
+        pub use fast_context::{UspaceContext, TaskContext};
+        use trap::riscv_fast_handler;
+    } else {
+        mod context;
+        pub use context::{TrapFrame, UspaceContext, TaskContext, GeneralRegisters};
+    }
+}
 
 /// Allows the current CPU to respond to interrupts.
-#[inline]
+//#[inline]
 pub fn enable_irqs() {
-    unsafe { sstatus::set_sie() }
+    unsafe { sstatus::set_sie() };
 }
 
 /// Makes the current CPU to ignore interrupts.
@@ -110,12 +121,32 @@ pub unsafe fn write_thread_pointer(tp: usize) {
     core::arch::asm!("mv tp, {}", in(reg) tp)
 }
 
+static mut KERNEL_STACK: [u8; 4096] = [0; 4096];
 /// Initializes CPU states on the current CPU.
 ///
 /// On RISC-V, it sets the trap vector base address.
+#[allow(static_mut_refs)]
 pub fn cpu_init() {
-    unsafe extern "C" {
-        fn trap_vector_base();
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "fast-trap")] {
+            use fast_trap::ContextExt;
+            static mut TRAP_FRAME: TrapFrame = TrapFrame::ZERO;
+
+            let init_trap = FreeTrapStack::new(
+                unsafe{(KERNEL_STACK.as_ptr() as usize)..(KERNEL_STACK.as_ptr() as usize + 4096) },
+                |_| {},
+                unsafe {NonNull::new_unchecked(&TRAP_FRAME as *const _ as *mut _)},
+                riscv_fast_handler,
+                ContextExt::read()
+            ).unwrap();
+            sscratch::write(init_trap.ptr());
+            core::mem::forget(init_trap);
+            set_trap_vector_base(fast_trap::trap_entry as usize);
+        } else {
+            unsafe extern "C" {
+                fn trap_vector_base();
+            }
+            set_trap_vector_base(trap_vector_base as usize);
+        }
     }
-    set_trap_vector_base(trap_vector_base as usize);
 }

@@ -11,7 +11,7 @@ use page_table_multiarch::PageSize;
 #[cfg(feature = "mmap")]
 pub mod mmap;
 
-use crate::backend::Backend;
+use crate::backend::{self, Backend};
 use crate::backend::frame::FrameTrackerRef;
 use crate::heap::HeapSpace;
 use crate::mapping_err_to_ax_err;
@@ -452,12 +452,14 @@ impl AddrSpace {
     /// Returns `true` if the page fault is handled successfully (not a real
     /// fault).
     pub fn handle_page_fault(&mut self, vaddr: VirtAddr, access_flags: MappingFlags) -> bool {
+        debug!("Handling page fault at {:?}", vaddr);
         if !self.va_range.contains(vaddr) {
             return false;
         }
         if let Some(area) = self.areas.find(vaddr) {
             let orig_flags = area.flags();
-            debug!("Page fault original flags: {:?}", orig_flags);
+            let (_, fla, _) = self.pt.query(vaddr).unwrap();
+            debug!("Page fault original flags: {:?}, pt flags: {:?}", orig_flags, fla);
             #[cfg(feature = "COW")]
             if orig_flags.contains(access_flags) || orig_flags.contains(MappingFlags::COW) {
                 let backed = area.backend().clone();

@@ -208,6 +208,11 @@ impl Backend {
             // should be COW page faults
             // TODO: update frame ref in addr space
             #[cfg(feature = "COW")]
+            // FIXME: false flag check
+            if !(orig_flags.contains(MappingFlags::WRITE)){
+                return false
+            }
+            #[cfg(feature = "COW")]
             return match va_type {
                 VmAreaType::Normal => Self::handle_page_fault_cow(vaddr, orig_flags, aspace),
                 _ => false,

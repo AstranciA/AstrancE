@@ -27,6 +27,7 @@ pub(crate) fn dispatch_irq_common(irq_num: usize) {
 /// the registration failed.
 #[allow(dead_code)]
 pub(crate) fn register_handler_common(irq_num: usize, handler: IrqHandler) -> bool {
+        warn!("123132");
     if irq_num < MAX_IRQ_COUNT && IRQ_HANDLER_TABLE.register_handler(irq_num, handler) {
         set_enable(irq_num, true);
         return true;

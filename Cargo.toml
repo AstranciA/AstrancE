@@ -11,14 +11,12 @@ members = [
 
   "ulib/axstd",
   "ulib/axlibc",
+  "ulib/axmono",
 
   "examples/helloworld",
-  "examples/httpclient",
-  "examples/httpserver",
-  "examples/httpserver",
-  "examples/shell",
-  "ulib/axmono",
 ]
+
+exclude = ["crates/*"]
 
 [workspace.package]
 version = "0.1.0"
@@ -81,9 +79,6 @@ page_table_multiarch = { path = "./crates/page_table_multiarch/page_table_multia
 page_table_entry = { path = "./crates/page_table_multiarch/page_table_entry" }
 memory_set = { path = "./crates/axmm_crates/memory_set" }
 memory_addr = { path = "./crates/axmm_crates/memory_addr" }
-#[patch.crates-io]
-#page_table_multiarch = { git = "https://github.com/Mivik/page_table_multiarch.git", rev = "19ededd" }
-#page_table_entry = { git = "https://github.com/Mivik/page_table_multiarch.git", rev = "19ededd" }
-#[patch.crates-io]
-#page_table_multiarch = { path = "./crates/page_table_multiarch/page_table_multiarch" }
-#page_table_entry = { path = "./crates/page_table_multiarch/page_table_entry" }
+
+[patch."https://github.com/AstranciA/fast-trap"]
+fast-trap = { path = "./crates/fast-trap/fast-trap" }

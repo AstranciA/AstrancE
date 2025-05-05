@@ -1,19 +1,3 @@
-use alloc::{
-    string::{String, ToString},
-    sync::Arc,
-    vec::Vec,
-};
-use arceos_posix_api::FD_TABLE;
-use axerrno::{ax_err_type, AxError, AxResult};
-use axfs::{CURRENT_DIR, CURRENT_DIR_PATH};
-use axhal::trap::{POST_TRAP, PRE_TRAP, register_trap_handler};
-use core::sync::atomic::AtomicUsize;
-use core::{
-    cell::UnsafeCell,
-    sync::atomic::{AtomicU64, Ordering},
-};
-use memory_addr::{MemoryAddr, VirtAddr, VirtAddrRange};
-use axfs::api::set_current_dir;
 use crate::{
     copy_from_kernel,
     ctypes::{CloneFlags, TimeStat, WaitStatus},
@@ -21,11 +5,27 @@ use crate::{
     loader::load_app_from_disk,
     mm::{load_elf_to_mem, map_elf_sections},
 };
-
-use axhal::{
-    arch::{TrapFrame, UspaceContext},
-    time::{NANOS_PER_MICROS, NANOS_PER_SEC, monotonic_time_nanos},
+use alloc::{
+    string::{String, ToString},
+    sync::Arc,
+    vec::Vec,
 };
+use arceos_posix_api::FD_TABLE;
+use axerrno::{AxError, AxResult, ax_err_type};
+use axfs::api::set_current_dir;
+use axfs::{CURRENT_DIR, CURRENT_DIR_PATH};
+use axhal::{
+    arch::{ITrapFrame, IUspaceContext, ITaskContext, TrapFrame, UspaceContext},
+    time::{NANOS_PER_MICROS, NANOS_PER_SEC, monotonic_time_nanos},
+    trap::{POST_TRAP, PRE_TRAP, register_trap_handler},
+};
+use core::sync::atomic::AtomicUsize;
+use core::{
+    cell::UnsafeCell,
+    sync::atomic::{AtomicU64, Ordering},
+};
+use memory_addr::{MemoryAddr, VirtAddr, VirtAddrRange};
+
 use axmm::heap::HeapSpace;
 use axmm::{AddrSpace, kernel_aspace};
 use axns::{AxNamespace, AxNamespaceIf};
@@ -211,17 +211,16 @@ pub fn spawn_user_task_inner(
         move || {
             // TODO: no current
             let curr = axtask::current();
-            let kstack_top = curr.kernel_stack_top().unwrap();
-            error!("tp:{:?}", curr.task_ext().uctx.0.regs.tp);
+            let kstack_range = curr.kernel_stack_range().unwrap();
             trace!(
                 "Enter user space: entry={:#x}, ustack={:#x}, kstack={:#x}",
                 curr.task_ext().uctx.get_ip(),
                 curr.task_ext().uctx.get_sp(),
-                kstack_top,
+                kstack_range,
             );
             // FIXME:
             set_current_dir("/");
-            unsafe { curr.task_ext().uctx.enter_uspace(kstack_top) };
+            unsafe { curr.task_ext().uctx.enter_uspace(kstack_range) };
         },
         app_name.into(),
         axconfig::plat::KERNEL_STACK_SIZE,
@@ -246,21 +245,6 @@ pub fn spawn_user_task(
      *let task_inner = spawn_user_task_inner(app_name, aspace, uctx);
      *axtask::spawn_task(task_inner)
      */
-}
-
-/// Unable to work for cloned task since task will overwrite trap_frame from uctx
-pub fn write_trapframe_to_kstack(kstack_top: usize, trap_frame: &TrapFrame) {
-    let trap_frame_size = core::mem::size_of::<TrapFrame>();
-    let trap_frame_ptr = (kstack_top - trap_frame_size) as *mut TrapFrame;
-    unsafe {
-        *trap_frame_ptr = *trap_frame;
-    }
-}
-
-pub fn read_trapframe_from_kstack(kstack_top: usize) -> TrapFrame {
-    let trap_frame_size = core::mem::size_of::<TrapFrame>();
-    let trap_frame_ptr = (kstack_top - trap_frame_size) as *mut TrapFrame;
-    unsafe { *trap_frame_ptr }
 }
 
 /// From starry-next
@@ -349,7 +333,8 @@ pub fn clone_task(
 
     let current_task_ext = current_task.task_ext();
     // new task with same ip and sp of current task
-    let mut trap_frame = read_trapframe_from_kstack(current_task.get_kernel_stack_top().unwrap());
+    //let mut trap_frame = read_trapframe_from_kstack(current_task.get_kernel_stack_top().unwrap());
+    let mut trap_frame = current_task_ext.uctx.0;
 
     let mut current_aspace = current_task_ext.aspace.lock();
     let mut new_aspace;
@@ -367,21 +352,22 @@ pub fn clone_task(
     //let new_uctx = current_task_ext.uctx.0;
 
     if from_umode {
-        trap_frame.set_ret_code(0);
-        trap_frame.inc_sepc();
+        trap_frame.set_retval(0);
+        // FIXME: no need for fast trap
+        trap_frame.step_ip();
     }
 
     // TODO: clone stack since it's always changed.
     // stack is copied meanwhilst addr space is copied
     //trap_frame.set_user_sp(stack);
     if let Some(stack) = stack {
-        trap_frame.set_user_sp(stack);
+        trap_frame.set_sp(stack);
     }
 
     //write_trapframe_to_kstack(new_task_ref.kernel_stack_top().unwrap().into(), &trap_frame);
     //write_trapframe_to_kstack(new_task_ref.kernel_stack_top().unwrap().into(), &TrapFrame::default());
     //new_uctx.0 = trap_frame;
-    let new_uctx = UspaceContext::from(&trap_frame);
+    let new_uctx = UspaceContext::with(&trap_frame);
     //panic!();
 
     let new_task_ref = spawn_user_task(
@@ -402,7 +388,10 @@ pub fn clone_task(
 /// - `Ok(handler)` if exec successfully, call handler to enter task.
 /// - `Err(AxError)` if exec failed
 pub fn exec_current(program_name: &str, args: &[String], envs: &[String]) -> AxResult {
-    warn!("exec: {} with args {:?}, envs {:?}", program_name, args, envs);
+    warn!(
+        "exec: {} with args {:?}, envs {:?}",
+        program_name, args, envs
+    );
 
     let program_path = program_name.to_string();
     let elf_file = load_app_from_disk(&program_path)?;
@@ -434,7 +423,7 @@ pub fn exec_current(program_name: &str, args: &[String], envs: &[String]) -> AxR
     unsafe {
         task_ext.uctx.enter_uspace(
             current_task
-                .kernel_stack_top()
+                .kernel_stack_range()
                 .expect("No kernel stack top"),
         )
     }

@@ -114,30 +114,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arceos-httpclient"
-version = "0.1.0"
-dependencies = [
- "axstd",
-]
-
-[[package]]
-name = "arceos-httpserver"
-version = "0.1.0"
-dependencies = [
- "axstd",
-]
-
-[[package]]
-name = "arceos-shell"
-version = "0.1.0"
-dependencies = [
- "axfs_ramfs",
- "axfs_vfs",
- "axstd",
- "crate_interface",
-]
-
-[[package]]
 name = "arceos_api"
 version = "0.1.0"
 dependencies = [
@@ -465,6 +441,7 @@ dependencies = [
  "bitflags 2.9.0",
  "cfg-if",
  "dw_apb_uart",
+ "fast-trap",
  "handler_table",
  "int_ratio",
  "kernel_guard",
@@ -671,13 +648,6 @@ dependencies = [
  "rand",
  "scheduler",
  "timer_list",
-]
-
-[[package]]
-name = "axtrap"
-version = "0.1.0"
-dependencies = [
- "fast-trap",
 ]
 
 [[package]]
@@ -1017,8 +987,6 @@ dependencies = [
 [[package]]
 name = "fast-trap"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46da95e6fcc7619a12d05594693e48591c0b574aef6fe5d7a7e765e6763a2cb2"
 
 [[package]]
 name = "fatfs"

@@ -8,3 +8,6 @@ authors = ["Yuekai Jia <equation618@gmail.com>"]
 
 [dependencies]
 axstd = { workspace = true, optional = true, features = ["alloc"]}
+
+[patch."https://github.com/AstranciA/fast-trap"]
+fast-trap = { path = "../../crates/fast-trap/fast-trap" }

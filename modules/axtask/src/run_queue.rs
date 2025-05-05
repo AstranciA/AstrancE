@@ -1,5 +1,6 @@
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
+use axhal::arch::ITaskContext;
 use core::mem::MaybeUninit;
 
 #[cfg(feature = "smp")]
@@ -528,13 +529,11 @@ impl AxRunQueue {
             !axhal::arch::irqs_enabled(),
             "IRQs must be disabled during scheduling"
         );
-        /*
-         *trace!(
-         *    "context switch: {} -> {}",
-         *    prev_task.id_name(),
-         *    next_task.id_name()
-         *);
-         */
+        trace!(
+            "context switch: {} -> {}",
+            prev_task.id_name(),
+            next_task.id_name()
+        );
         #[cfg(feature = "preempt")]
         next_task.set_preempt_pending(false);
         next_task.set_state(TaskState::Running);

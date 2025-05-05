@@ -4,7 +4,7 @@ use linkme::distributed_slice as def_trap_handler;
 use memory_addr::VirtAddr;
 use page_table_entry::MappingFlags;
 
-use crate::arch::TrapFrame;
+use crate::arch::{TrapFrame, ITrapFrame};
 
 pub use linkme::distributed_slice as register_trap_handler;
 
@@ -19,7 +19,7 @@ pub static PAGE_FAULT: [fn(VirtAddr, MappingFlags, bool) -> bool];
 /// A slice of syscall handler functions.
 #[cfg(feature = "uspace")]
 #[def_trap_handler]
-pub static SYSCALL: [fn(&TrapFrame, usize) -> Option<isize>];
+pub static SYSCALL: [fn(&[usize; 6], usize) -> Option<isize>];
 
 #[def_trap_handler]
 pub static PRE_TRAP: [fn(&TrapFrame) -> bool];
@@ -46,22 +46,14 @@ macro_rules! handle_trap {
 /// Call the external syscall handler.
 /// Handlers can overlap each other but only one of them can return Some(isize).
 #[cfg(feature = "uspace")]
-pub(crate) fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
+pub(crate) fn handle_syscall(args: &[usize;6], syscall_num: usize) -> isize {
     let mut result = None;
     let mut result_count: usize = 0;
-    let args = [
-        tf.arg0(),
-        tf.arg1(),
-        tf.arg2(),
-        tf.arg3(),
-        tf.arg4(),
-        tf.arg5(),
-    ];
 
-    debug!("syscall {:?} with args: {:x?}", syscall_num, args);
+    //debug!("syscall {:?} with args: {:x?}", syscall_num, args);
 
     for handler in SYSCALL {
-        if let Some(r) = handler(tf, syscall_num) {
+        if let Some(r) = handler(args, syscall_num) {
             if result_count > 1 {
                 panic!("Multiple syscall handlers returned a value");
             }
@@ -70,7 +62,7 @@ pub(crate) fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
         }
     }
 
-    debug!("syscall_handler result: {:x?}", result);
+    //debug!("syscall_handler result: {:x?}", result);
     // 38: ENOSYS
     // TODO: loongarch ENOSYS??
     result.unwrap_or(-38)

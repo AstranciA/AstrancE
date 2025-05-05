@@ -1,224 +1,195 @@
-use core::arch::naked_asm;
 use memory_addr::{VirtAddr, VirtAddrRange};
+use riscv::register::sstatus;
 
 use crate::arch::{ITaskContext, ITrapFrame, IUspaceContext};
 
-/// General registers of RISC-V.
-#[allow(missing_docs)]
-#[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
-pub struct GeneralRegisters {
-    pub ra: usize,
-    pub sp: usize,
-    pub gp: usize, // only valid for user traps
-    pub tp: usize, // only valid for user traps
-    pub t0: usize,
-    pub t1: usize,
-    pub t2: usize,
-    pub s0: usize,
-    pub s1: usize,
-    pub a0: usize,
-    pub a1: usize,
-    pub a2: usize,
-    pub a3: usize,
-    pub a4: usize,
-    pub a5: usize,
-    pub a6: usize,
-    pub a7: usize,
-    pub s2: usize,
-    pub s3: usize,
-    pub s4: usize,
-    pub s5: usize,
-    pub s6: usize,
-    pub s7: usize,
-    pub s8: usize,
-    pub s9: usize,
-    pub s10: usize,
-    pub s11: usize,
-    pub t3: usize,
-    pub t4: usize,
-    pub t5: usize,
-    pub t6: usize,
-}
+use super::trap::{fast_trap_cause, riscv_fast_handler};
+use core::{arch::naked_asm, ptr::NonNull};
+use fast_trap::{soft_trap, trap_entry, ContextExt, FlowContext, FreeTrapStack};
 
 /// Saved registers when a trap (interrupt or exception) occurs.
-#[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
-pub struct TrapFrame {
-    /// All general registers.
-    pub regs: GeneralRegisters,
-    /// Supervisor Exception Program Counter.
-    pub sepc: usize,
-    /// Supervisor Status Register.
-    pub sstatus: usize,
-}
 
-impl ITrapFrame for TrapFrame {
-    /// Gets the 0th syscall argument.
+impl ITrapFrame for FlowContext {
     fn arg0(&self) -> usize {
-        self.regs.a0
+        self.a[0]
     }
 
-    /// Gets the 1st syscall argument.
     fn arg1(&self) -> usize {
-        self.regs.a1
+        self.a[1]
     }
 
-    /// Gets the 2nd syscall argument.
     fn arg2(&self) -> usize {
-        self.regs.a2
+        self.a[2]
     }
 
-    /// Gets the 3rd syscall argument.
     fn arg3(&self) -> usize {
-        self.regs.a3
+        self.a[3]
     }
 
-    /// Gets the 4th syscall argument.
     fn arg4(&self) -> usize {
-        self.regs.a4
+        self.a[4]
     }
 
-    /// Gets the 5th syscall argument.
     fn arg5(&self) -> usize {
-        self.regs.a5
+        self.a[5]
     }
-    /// set return code
+
     fn set_retval(&mut self, ret_value: usize) {
-        self.regs.a0 = ret_value;
+        self.a[0] = ret_value;
     }
 
     fn get_sp(&self) -> usize {
-        self.sepc
+        self.sp
     }
 
-    /// set user sp
     fn set_sp(&mut self, user_sp: usize) {
-        self.regs.sp = user_sp;
+        self.sp = user_sp;
     }
 
     fn get_ip(&self) -> usize {
-        self.sepc
+        self.pc
     }
 
-    /// increase sepc
     fn set_ip(&mut self, pc: usize) {
-        self.sepc = pc;
+        self.pc = pc;
     }
 
     fn step_ip(&mut self) {
-        self.sepc += 4;
+        self.pc += 4;
     }
 }
 
-/// Context to enter user space.
-#[cfg(feature = "uspace")]
-pub struct UspaceContext(pub TrapFrame);
+pub struct UspaceContext(pub FlowContext);
 
-#[cfg(feature = "uspace")]
 impl IUspaceContext for UspaceContext {
-    /// Creates an empty context with all registers set to zero.
     fn empty() -> Self {
-        unsafe { core::mem::MaybeUninit::zeroed().assume_init() }
+        Self(FlowContext::ZERO)
     }
 
-    /// Creates a new context with the given entry point, user stack pointer,
-    /// and the argument.
     fn new(entry: usize, ustack_top: VirtAddr, arg0: usize) -> Self {
-        const SPIE: usize = 1 << 5;
-        const SUM: usize = 1 << 18;
-        Self(TrapFrame {
-            regs: GeneralRegisters {
-                a0: arg0,
-                sp: ustack_top.as_usize(),
-                ..Default::default()
-            },
-            sepc: entry,
-            sstatus: SPIE | SUM,
-        })
+        let mut context = FlowContext::ZERO;
+        context.pc = entry;
+        context.sp = ustack_top.into();
+        context.a[0] = arg0;
+        Self(context)
     }
 
-    /// Creates a new context from the given [`TrapFrame`].
-    fn with(trap_frame: &TrapFrame) -> Self {
-        Self(*trap_frame)
+    fn with(trap_frame: &FlowContext) -> Self {
+        Self(trap_frame.clone())
     }
 
-    /// Gets the instruction pointer.
     fn get_ip(&self) -> usize {
-        self.0.sepc
+        self.0.pc
     }
 
-    /// Gets the stack pointer.
     fn get_sp(&self) -> usize {
-        self.0.regs.sp
+        self.0.sp
     }
 
-    /// Sets the instruction pointer.
     fn set_ip(&mut self, pc: usize) {
-        self.0.sepc = pc;
+        self.0.pc = pc;
     }
 
-    /// Sets the stack pointer.
     fn set_sp(&mut self, sp: usize) {
-        self.0.regs.sp = sp;
+        self.0.sp = sp;
     }
 
-    /// Sets the return value register.
     fn set_retval(&mut self, a0: usize) {
-        self.0.regs.a0 = a0;
+        self.0.a[0] = a0;
     }
 
-    /// Enters user space.
-    ///
-    /// It restores the user registers and jumps to the user entry point
-    /// (saved in `sepc`).
-    /// When an exception or syscall occurs, the kernel stack pointer is
-    /// switched to `kstack_top`.
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because it changes processor mode and the stack.
     #[unsafe(no_mangle)]
     unsafe fn enter_uspace(&self, kstack_range: VirtAddrRange) -> ! {
         use riscv::register::{sepc, sscratch};
-        let kstack_top = kstack_range.end;
-
         super::disable_irqs();
-        sscratch::write(kstack_top.as_usize());
-        sepc::write(self.0.sepc);
-        // Address of the top of the kernel stack after saving the trap frame.
-        let kernel_trap_addr = kstack_top.as_usize() - core::mem::size_of::<TrapFrame>();
-        unsafe {
-            core::arch::asm!(
-                include_asm_macros!(),
-                "
-                mv      sp, {tf}
+        let kstack = FreeTrapStack::new(
+            kstack_range.to_range(),
+            |_| {},
+            unsafe { NonNull::new_unchecked(&self.0 as *const _ as *mut _) },
+            riscv_fast_handler,
+            ContextExt::read(),
+        )
+        .unwrap();
+        let stack_top = kstack.ptr();
+        let loaded = kstack.load();
+        const SPIE: usize = 1 << 5;
+        const SUM: usize = 1 << 18;
+        //core::arch::asm!("csrw sstatus, {sstatus}", SPIE | SUM);
+        //sstatus::set_spie();
+        core::arch::asm!("csrw sstatus, {sstatus}", sstatus = in(reg) SPIE | SUM);
+        unsafe { soft_trap(fast_trap_cause::BOOT) };
 
-                STR     gp, {kernel_trap_addr}, 2
-                LDR     gp, sp, 2
-
-                STR     tp, {kernel_trap_addr}, 3
-                LDR     tp, sp, 3
-
-                LDR     t0, sp, 32
-                csrw    sstatus, t0
-                POP_GENERAL_REGS
-                LDR     sp, sp, 1
-                sret",
-                tf = in(reg) &(self.0),
-                kernel_trap_addr = in(reg) kernel_trap_addr,
-                options(noreturn),
-            )
-        }
+        unreachable!();
     }
 }
 
-#[cfg(feature = "uspace")]
-impl Clone for UspaceContext {
-    fn clone(&self) -> Self {
-        Self::with(&self.0)
-    }
-}
+/*
+ *pub struct TaskContext {
+ *    context: FlowContext,
+ *    #[cfg(feature = "uspace")]
+ *    pub satp: memory_addr::PhysAddr,
+ *}
+ *
+ *impl ITaskContext for TaskContext {
+ *    /// Creates a dummy context for a new task.
+ *    ///
+ *    /// Note the context is not initialized, it will be filled by [`switch_to`]
+ *    /// (for initial tasks) and [`init`] (for regular tasks) methods.
+ *    ///
+ *    /// [`init`]: TaskContext::init
+ *    /// [`switch_to`]: TaskContext::switch_to
+ *    fn new() -> Self {
+ *        Self {
+ *            context: FlowContext::ZERO,
+ *            #[cfg(feature = "uspace")]
+ *            satp: crate::paging::kernel_page_table_root(),
+ *        }
+ *    }
+ *
+ *    /// Initializes the context for a new task, with the given entry point and
+ *    /// kernel stack.
+ *    fn init(&mut self, entry: usize, kstack_top: VirtAddr, tls_area: VirtAddr) {
+ *        self.context.set_sp(kstack_top.as_usize());
+ *        self.context.ra = ret_value;
+ *        self.context.tp = tls_area.as_usize();
+ *    }
+ *
+ *    /// Changes the page table root (`satp` register for riscv64).
+ *    ///
+ *    /// If not set, the kernel page table root is used (obtained by
+ *    /// [`axhal::paging::kernel_page_table_root`][1]).
+ *    /// hl
+ *    ///
+ *    ///
+ *    /// [1]: crate::paging::kernel_page_table_root
+ *    #[cfg(feature = "uspace")]
+ *    fn set_page_table_root(&mut self, satp: memory_addr::PhysAddr) {
+ *        self.satp = satp;
+ *    }
+ *
+ *    /// Switches to another task.
+ *    ///
+ *    /// It first saves the current task's context from CPU to this place, and then
+ *    /// restores the next task's context from `next_ctx` to CPU.
+ *    fn switch_to(&mut self, next_ctx: &Self) {
+ *        #[cfg(feature = "tls")]
+ *        {
+ *            self.context.tp = super::read_thread_pointer();
+ *            unsafe { super::write_thread_pointer(next_ctx.tp) };
+ *        }
+ *        #[cfg(feature = "uspace")]
+ *        unsafe {
+ *            if self.satp != next_ctx.satp {
+ *                super::write_page_table_root(next_ctx.satp);
+ *            }
+ *        }
+ *        unsafe {
+ *            // TODO: switch FP states
+ *            context_switch(self, next_ctx)
+ *        }
+ *    }
+ *}
+ */
 
 /// Saved hardware states of a task.
 ///
@@ -259,7 +230,6 @@ pub struct TaskContext {
     // TODO: FP states
 }
 
-
 impl ITaskContext for TaskContext {
     /// Creates a dummy context for a new task.
     ///
@@ -268,7 +238,7 @@ impl ITaskContext for TaskContext {
     ///
     /// [`init`]: TaskContext::init
     /// [`switch_to`]: TaskContext::switch_to
-     fn new() -> Self {
+    fn new() -> Self {
         Self {
             #[cfg(feature = "uspace")]
             satp: crate::paging::kernel_page_table_root(),
@@ -278,7 +248,7 @@ impl ITaskContext for TaskContext {
 
     /// Initializes the context for a new task, with the given entry point and
     /// kernel stack.
-     fn init(&mut self, entry: usize, kstack_top: VirtAddr, tls_area: VirtAddr) {
+    fn init(&mut self, entry: usize, kstack_top: VirtAddr, tls_area: VirtAddr) {
         self.sp = kstack_top.as_usize();
         self.ra = entry;
         self.tp = tls_area.as_usize();
@@ -293,7 +263,7 @@ impl ITaskContext for TaskContext {
     ///
     /// [1]: crate::paging::kernel_page_table_root
     #[cfg(feature = "uspace")]
-     fn set_page_table_root(&mut self, satp: memory_addr::PhysAddr) {
+    fn set_page_table_root(&mut self, satp: memory_addr::PhysAddr) {
         self.satp = satp;
     }
 
@@ -301,7 +271,7 @@ impl ITaskContext for TaskContext {
     ///
     /// It first saves the current task's context from CPU to this place, and then
     /// restores the next task's context from `next_ctx` to CPU.
-     fn switch_to(&mut self, next_ctx: &Self) {
+    fn switch_to(&mut self, next_ctx: &Self) {
         #[cfg(feature = "tls")]
         {
             self.tp = super::read_thread_pointer();
@@ -322,7 +292,7 @@ impl ITaskContext for TaskContext {
 
 #[naked]
 unsafe extern "C" fn context_switch(_current_task: &mut TaskContext, _next_task: &TaskContext) {
-    naked_asm!(
+    core::arch::naked_asm!(
         include_asm_macros!(),
         "
         // save old context (callee-saved registers)
