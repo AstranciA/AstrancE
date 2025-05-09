@@ -9,7 +9,6 @@ use memory_addr::{PhysAddr, VirtAddr};
 use riscv::asm;
 use riscv::register::{satp, sscratch, sstatus, stvec};
 
-#[cfg(feature = "uspace")]
 cfg_if::cfg_if! {
     if #[cfg(feature = "fast-trap")] {
         mod fast_context;
@@ -121,7 +120,6 @@ pub unsafe fn write_thread_pointer(tp: usize) {
     core::arch::asm!("mv tp, {}", in(reg) tp)
 }
 
-static mut KERNEL_STACK: [u8; 4096] = [0; 4096];
 /// Initializes CPU states on the current CPU.
 ///
 /// On RISC-V, it sets the trap vector base address.
@@ -129,18 +127,19 @@ static mut KERNEL_STACK: [u8; 4096] = [0; 4096];
 pub fn cpu_init() {
     cfg_if::cfg_if! {
         if #[cfg(feature = "fast-trap")] {
-            use fast_trap::ContextExt;
+            static mut KERNEL_STACK: [u8; 4096] = [0; 4096];
             static mut TRAP_FRAME: TrapFrame = TrapFrame::ZERO;
+            use fast_trap::ContextExt;
+            let stack_range = unsafe{KERNEL_STACK.as_ptr_range()};
 
             let init_trap = FreeTrapStack::new(
-                unsafe{(KERNEL_STACK.as_ptr() as usize)..(KERNEL_STACK.as_ptr() as usize + 4096) },
+                stack_range.start as usize..stack_range.end as usize,
                 |_| {},
                 unsafe {NonNull::new_unchecked(&TRAP_FRAME as *const _ as *mut _)},
                 riscv_fast_handler,
                 ContextExt::read()
             ).unwrap();
-            sscratch::write(init_trap.ptr());
-            core::mem::forget(init_trap);
+            core::mem::forget(init_trap.load());
             set_trap_vector_base(fast_trap::trap_entry as usize);
         } else {
             unsafe extern "C" {

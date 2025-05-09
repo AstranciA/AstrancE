@@ -114,6 +114,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "arceos-shell"
+version = "0.1.0"
+dependencies = [
+ "axfs_ramfs",
+ "axfs_vfs",
+ "axmono",
+ "axstd",
+ "crate_interface",
+]
+
+[[package]]
 name = "arceos_api"
 version = "0.1.0"
 dependencies = [

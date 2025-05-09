@@ -15,7 +15,7 @@ use axerrno::{AxError, AxResult, ax_err_type};
 use axfs::api::set_current_dir;
 use axfs::{CURRENT_DIR, CURRENT_DIR_PATH};
 use axhal::{
-    arch::{ITrapFrame, IUspaceContext, ITaskContext, TrapFrame, UspaceContext},
+    arch::{ITaskContext, ITrapFrame, IUspaceContext, TrapFrame, UspaceContext},
     time::{NANOS_PER_MICROS, NANOS_PER_SEC, monotonic_time_nanos},
     trap::{POST_TRAP, PRE_TRAP, register_trap_handler},
 };
@@ -24,7 +24,7 @@ use core::{
     cell::UnsafeCell,
     sync::atomic::{AtomicU64, Ordering},
 };
-use memory_addr::{MemoryAddr, VirtAddr, VirtAddrRange};
+use memory_addr::{MemoryAddr, VirtAddr, VirtAddrRange, va};
 
 use axmm::heap::HeapSpace;
 use axmm::{AddrSpace, kernel_aspace};
@@ -33,12 +33,6 @@ use axsync::Mutex;
 use axtask::{AxTaskRef, TaskExtMut, TaskExtRef, TaskInner, WeakAxTaskRef, current};
 
 pub fn new_user_aspace_empty() -> AxResult<AddrSpace> {
-    /*
-     *AddrSpace::new_empty(
-     *    VirtAddr::from_usize(config::USER_SPACE_BASE),
-     *    config::USER_SPACE_SIZE,
-     *)
-     */
     AddrSpace::new_empty(
         VirtAddr::from_usize(axconfig::plat::USER_SPACE_BASE),
         axconfig::plat::USER_SPACE_SIZE,
@@ -166,6 +160,7 @@ impl TaskExt {
 
 impl Drop for TaskExt {
     fn drop(&mut self) {
+        warn!("Drop TaskExt: ");
         if !cfg!(target_arch = "aarch64") && !cfg!(target_arch = "loongarch64") {
             // See [`crate::new_user_aspace`]
 
@@ -246,12 +241,21 @@ pub fn spawn_user_task(
      *axtask::spawn_task(task_inner)
      */
 }
+pub fn print_gp() {
+    let mut gp:usize;
+    let mut tp:usize;
+    unsafe {
+        core::arch::asm!("mv {gp}, gp", "mv {tp}, tp", gp = out(reg) gp, tp = out(reg) tp, options(nostack, nomem));
+    }
+    ax_println!("gp: 0x{:x}, tp: 0x{:x}", gp, tp);
+}
 
 /// From starry-next
 pub fn wait_pid(task: AxTaskRef, pid: i32, exit_code_ptr: *mut i32) -> Result<u64, WaitStatus> {
     let mut exit_task_id: usize = 0;
     let mut answer_id: u64 = 0;
     let mut answer_status = WaitStatus::NotExist;
+    //let mut aspace = task.task_ext().aspace.lock();
 
     for (index, child) in task.task_ext().children.lock().iter().enumerate() {
         if pid <= 0 {
@@ -269,11 +273,15 @@ pub fn wait_pid(task: AxTaskRef, pid: i32, exit_code_ptr: *mut i32) -> Result<u6
                     exit_code
                 );
                 exit_task_id = index;
+                warn!("123, {exit_code_ptr:p}, ");
+                //warn!("pte: {:?}", aspace.page_table().query(va!(exit_code_ptr as usize)));
+                print_gp();
                 if !exit_code_ptr.is_null() {
                     unsafe {
                         *exit_code_ptr = exit_code << 8;
                     }
                 }
+                print_gp();
                 answer_id = child.id().as_u64();
                 break;
             }
@@ -292,6 +300,7 @@ pub fn wait_pid(task: AxTaskRef, pid: i32, exit_code_ptr: *mut i32) -> Result<u6
                     }
                 }
                 answer_id = child.id().as_u64();
+                //answer_status = WaitStatus::Exited;
             } else {
                 answer_status = WaitStatus::Running;
             }
@@ -304,6 +313,7 @@ pub fn wait_pid(task: AxTaskRef, pid: i32, exit_code_ptr: *mut i32) -> Result<u6
     }
 
     if answer_status == WaitStatus::Exited {
+        warn!("remove child");
         task.task_ext().children.lock().remove(exit_task_id);
         return Ok(answer_id);
     }
@@ -334,7 +344,7 @@ pub fn clone_task(
     let current_task_ext = current_task.task_ext();
     // new task with same ip and sp of current task
     //let mut trap_frame = read_trapframe_from_kstack(current_task.get_kernel_stack_top().unwrap());
-    let mut trap_frame = current_task_ext.uctx.0;
+    let mut trap_frame = current_task_ext.uctx.0.clone();
 
     let mut current_aspace = current_task_ext.aspace.lock();
     let mut new_aspace;
@@ -367,8 +377,8 @@ pub fn clone_task(
     //write_trapframe_to_kstack(new_task_ref.kernel_stack_top().unwrap().into(), &trap_frame);
     //write_trapframe_to_kstack(new_task_ref.kernel_stack_top().unwrap().into(), &TrapFrame::default());
     //new_uctx.0 = trap_frame;
+    warn!("{trap_frame:#x?}");
     let new_uctx = UspaceContext::with(&trap_frame);
-    //panic!();
 
     let new_task_ref = spawn_user_task(
         current_task.name(),

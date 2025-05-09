@@ -14,6 +14,7 @@ members = [
   "ulib/axmono",
 
   "examples/helloworld",
+  "examples/shell",
 ]
 
 exclude = ["crates/*"]

@@ -302,6 +302,7 @@ impl ITaskContext for TaskContext {
     /// It first saves the current task's context from CPU to this place, and then
     /// restores the next task's context from `next_ctx` to CPU.
      fn switch_to(&mut self, next_ctx: &Self) {
+        warn!("switch! satp: {:x} {:x}", self.satp, next_ctx.satp);
         #[cfg(feature = "tls")]
         {
             self.tp = super::read_thread_pointer();

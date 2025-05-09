@@ -483,6 +483,8 @@ impl fmt::Debug for TaskInner {
 
 impl Drop for TaskInner {
     fn drop(&mut self) {
+        unsafe { warn!("ext_ptr {:p}", self.task_ext_ptr()) };
+        unsafe { warn!("kstack {:?}", self.kernel_stack_top()) };
         debug!("task drop: {}", self.id_name());
     }
 }

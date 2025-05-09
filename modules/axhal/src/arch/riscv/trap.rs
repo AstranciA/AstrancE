@@ -46,10 +46,16 @@ fn riscv_trap_handler(tf: &mut TrapFrame, from_user: bool) {
     let scause = scause::read();
     pre_trap(tf);
     if let Ok(cause) = scause.cause().try_into::<I, E>() {
+        warn!("{:?}", cause);
         match cause {
             #[cfg(feature = "uspace")]
             Trap::Exception(E::UserEnvCall) => {
-                tf.set_retval(crate::trap::handle_syscall(tf, tf.regs.a7) as usize);
+                tf.set_retval(crate::trap::handle_syscall(
+                    &[
+                        tf.regs.a0, tf.regs.a1, tf.regs.a2, tf.regs.a3, tf.regs.a4, tf.regs.a5,
+                    ],
+                    tf.regs.a7,
+                ) as usize);
                 tf.step_ip();
             }
             Trap::Exception(E::LoadPageFault) => {
@@ -82,6 +88,7 @@ fn riscv_trap_handler(tf: &mut TrapFrame, from_user: bool) {
             tf
         );
     }
+    debug!("tf: {:#x?}", tf);
     post_trap(tf);
 }
 
@@ -101,58 +108,22 @@ pub extern "C" fn riscv_fast_handler(
     a6: usize,
     a7: usize,
 ) -> FastResult {
-    // WARN: log is not avaiable here since gp is not set yet
-    use riscv::register::{
-        sepc, sscratch,
-        sstatus::{self, SPP},
-    };
+    use core::arch::asm;
+
+    use riscv::register::sstatus::{self, SPP};
+    unsafe { asm!("fence iorw, iorw"); }
     unsafe { sstatus::clear_sie() };
     let scause = scause::read();
-    // FIXME:
-    let from_user = true;
+    // FIXME:: monokernel and unikernel "user" is in different mode;
     let a0 = ctx.a0();
     let tf = ctx.regs();
-    if let Ok(cause) = scause.cause().try_into::<I, E>() {
-        //pre_trap(tf);
-        match cause {
-            #[cfg(feature = "uspace")]
-            Trap::Exception(E::UserEnvCall) => {
-                // WARN: no a6
-                let args = [a0, a1, a2, a3, a4, a5];
-                tf.set_retval(crate::trap::handle_syscall(&args, a7) as usize);
-                // FIXME: tf.step_ip();
-                //tf.step_ip();
-            }
-            Trap::Exception(E::LoadPageFault) => {
-                handle_page_fault(tf, MappingFlags::READ, from_user)
-            }
-            Trap::Exception(E::StorePageFault) => {
-                handle_page_fault(tf, MappingFlags::WRITE, from_user)
-            }
-            Trap::Exception(E::InstructionPageFault) => {
-                handle_page_fault(tf, MappingFlags::EXECUTE, from_user)
-            }
-            Trap::Exception(E::Breakpoint) => handle_breakpoint(&mut tf.get_ip()),
-            Trap::Interrupt(_) => {
-                handle_trap!(IRQ, scause.bits());
-            }
-            _ => {
-                panic!(
-                    "Unhandled trap {:?} @ {:#x}:\n{:#x?}",
-                    cause,
-                    tf.get_ip(),
-                    tf
-                );
-            }
-        }
-        //post_trap(tf);
-        let sepc = sepc::read();
-        sepc::write(sepc + 4);
-        ctx.restore()
+    if let Ok(_) = scause.cause().try_into::<I, E>() {
+        pre_trap(tf);
+        tf.a = [a0, a1, a2, a3, a4, a5, a6, a7];
+        return ctx.continue_with(riscv_entire_handler, [a0, a1, a2, a3, a4, a5, a6, a7]);
     } else {
         if let Trap::Exception(code) = scause.cause() {
             match code {
-                //fast_trap_cause::BOOT => sepc::write(tf.get_ip()),
                 fast_trap_cause::BOOT => warn!("boot fast-trap"),
                 fast_trap_cause::CALL => log::warn!("call fast-trap inline!"),
                 _ => panic!(
@@ -164,15 +135,22 @@ pub extern "C" fn riscv_fast_handler(
             }
             // FIXME: 将spp作为tf字段传过来
             unsafe { sstatus::set_spp(SPP::User) };
+            warn!("init uspace trap, tf: {tf:#x?}");
+            tf.t = [0; 7];
+            tf.s = [0; 12];
+            tf.tp = 0;
+            tf.gp = 0;
             //ctx.regs().a = [ctx.a0(), a1, a2, a3, a4, a5, a6, a7];
             unsafe {
                 core::arch::asm!(
                     "
                 csrw sscratch, {sp}
                 csrw     sepc, {pc}
+                mv   ra, {ra}
             ",
                     sp = in(reg) tf.sp,
                     pc = in(reg) tf.pc,
+                    ra = in(reg) tf.ra,
                 );
             }
             return ctx.restore();
@@ -187,36 +165,63 @@ pub extern "C" fn riscv_fast_handler(
 }
 
 #[cfg(feature = "fast-trap")]
+#[allow(static_mut_refs)]
 pub extern "C" fn riscv_entire_handler(
-    mut ctx: fast_trap::EntireContext,
+    mut ctx: fast_trap::EntireContext<[usize; 8]>,
 ) -> fast_trap::EntireResult {
-    use fast_trap::ContextExt;
+    use core::ptr::NonNull;
+
+    use fast_trap::{ContextExt, FlowContext, FreeTrapStack};
     use riscv::register::{
-        sepc, sscratch,
+        sepc,
         sstatus::{self, SPP},
     };
-    unsafe { sstatus::clear_sie() };
-    let (mut ctx, mail) = ctx.split();
+    // FIXME:: monokernel and unikernel "user" is in different mode;
+    let from_user = sstatus::read().spp() == SPP::User;
     let scause = scause::read();
-    // FIXME:
-    let from_user = true;
+    let (mut ctx, args) = ctx.split();
     let tf = ctx.regs();
-    let sepc = sepc::read();
+
+    static mut ROOT_STACK: [u8; 4096] = [0; 4096];
+    static mut ROOT_CONTEXT: FlowContext = FlowContext::ZERO;
+
     if let Ok(cause) = scause.cause().try_into::<I, E>() {
-        //pre_trap(tf);
+        let sepc = sepc::read();
+        tf.set_ip(sepc);
+
+        pre_trap(tf);
+        warn!("spp: {:?}", sstatus::read().spp());
         match cause {
             #[cfg(feature = "uspace")]
             Trap::Exception(E::UserEnvCall) => {
+                if !from_user {
+                    panic!("user mode syscall from kernel mode");
+                }
+                // 保护栈，用于嵌套陷入
+                let stack = unsafe { ROOT_STACK.as_ptr_range() };
+                let context_ptr = unsafe { NonNull::new_unchecked(&raw mut ROOT_CONTEXT) };
+                let _protect = FreeTrapStack::new(
+                    unsafe { stack.start as usize..stack.end as usize },
+                    |_| {},
+                    context_ptr,
+                    riscv_fast_handler,
+                    ContextExt::read(),
+                )
+                .unwrap();
+                let _loaded = _protect.load();
                 // WARN: no a6
-                let args = [tf.a[0], tf.a[1], tf.a[2], tf.a[3], tf.a[4], tf.a[5]];
-                tf.set_retval(crate::trap::handle_syscall(&args, tf.a[7]) as usize);
-                // FIXME: tf.step_ip();
-                //tf.step_ip();
+                tf.set_retval(crate::trap::handle_syscall(
+                    &[args[0], args[1], args[2], args[3], args[4], args[5]],
+                    args[7],
+                ) as usize);
+                _loaded.unload();
+                tf.step_ip();
             }
             Trap::Exception(E::LoadPageFault) => {
                 handle_page_fault(tf, MappingFlags::READ, from_user)
             }
             Trap::Exception(E::StorePageFault) => {
+                warn!("store page fault from {:x}", sepc::read());
                 handle_page_fault(tf, MappingFlags::WRITE, from_user)
             }
             Trap::Exception(E::InstructionPageFault) => {
@@ -235,14 +240,13 @@ pub extern "C" fn riscv_entire_handler(
                 );
             }
         }
-        //post_trap(tf);
-        sepc::write(sepc + 4);
-        let sepc = sepc::read();
+        sepc::write(tf.get_ip());
+        post_trap(tf);
+        debug!("after trap, tf: {tf:#x?}");
         ctx.restore()
     } else {
         if let Trap::Exception(code) = scause.cause() {
             match code {
-                //fast_trap_cause::BOOT => sepc::write(tf.get_ip()),
                 fast_trap_cause::BOOT => debug!("boot fast-trap"),
                 fast_trap_cause::CALL => debug!("call fast-trap inline!"),
                 _ => panic!(
@@ -254,7 +258,6 @@ pub extern "C" fn riscv_entire_handler(
             }
             // FIXME: 将spp作为tf字段传过来
             unsafe { sstatus::set_spp(SPP::User) };
-            //ctx.regs().a = [ctx.a0(), a1, a2, a3, a4, a5, a6, a7];
             unsafe {
                 core::arch::asm!(
                     "

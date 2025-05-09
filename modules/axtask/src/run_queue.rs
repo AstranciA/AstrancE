@@ -546,6 +546,9 @@ impl AxRunQueue {
         #[cfg(feature = "smp")]
         next_task.set_on_cpu(true);
 
+
+        let a = next_task.id_name();
+
         unsafe {
             let prev_ctx_ptr = prev_task.ctx_mut_ptr();
             let next_ctx_ptr = next_task.ctx_mut_ptr();
@@ -583,7 +586,9 @@ fn gc_entry() {
             if let Some(task) = task {
                 if Arc::strong_count(&task) == 1 {
                     // If I'm the last holder of the task, drop it immediately.
+                    warn!("drp");
                     drop(task);
+                    warn!("agter drp");
                 } else {
                     // Otherwise (e.g, `switch_to` is not compeleted, held by the
                     // joiner, etc), push it back and wait for them to drop first.

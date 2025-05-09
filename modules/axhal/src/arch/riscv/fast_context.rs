@@ -5,7 +5,7 @@ use crate::arch::{ITaskContext, ITrapFrame, IUspaceContext};
 
 use super::trap::{fast_trap_cause, riscv_fast_handler};
 use core::{arch::naked_asm, ptr::NonNull};
-use fast_trap::{soft_trap, trap_entry, ContextExt, FlowContext, FreeTrapStack};
+use fast_trap::{ContextExt, FlowContext, FreeTrapStack, soft_trap, soft_trap2, trap_entry};
 
 /// Saved registers when a trap (interrupt or exception) occurs.
 
@@ -110,14 +110,16 @@ impl IUspaceContext for UspaceContext {
             ContextExt::read(),
         )
         .unwrap();
-        let stack_top = kstack.ptr();
         let loaded = kstack.load();
+        core::mem::forget(loaded);
         const SPIE: usize = 1 << 5;
         const SUM: usize = 1 << 18;
         //core::arch::asm!("csrw sstatus, {sstatus}", SPIE | SUM);
         //sstatus::set_spie();
-        core::arch::asm!("csrw sstatus, {sstatus}", sstatus = in(reg) SPIE | SUM);
-        unsafe { soft_trap(fast_trap_cause::BOOT) };
+        core::arch::asm!("csrw sstatus, {sstatus}", sstatus = in(reg) SPIE | SUM );
+        let mut ra: usize;
+        core::arch::asm!("mv ra, {ra}", ra = out(reg) ra);
+        unsafe { soft_trap2(fast_trap_cause::BOOT, self.0.ra) };
 
         unreachable!();
     }
@@ -272,6 +274,7 @@ impl ITaskContext for TaskContext {
     /// It first saves the current task's context from CPU to this place, and then
     /// restores the next task's context from `next_ctx` to CPU.
     fn switch_to(&mut self, next_ctx: &Self) {
+        warn!("switch! satp: {:x} {:x}", self.satp, next_ctx.satp);
         #[cfg(feature = "tls")]
         {
             self.tp = super::read_thread_pointer();
@@ -285,8 +288,9 @@ impl ITaskContext for TaskContext {
         }
         unsafe {
             // TODO: switch FP states
-            context_switch(self, next_ctx)
+            context_switch(self, next_ctx);
         }
+        warn!("123");
     }
 }
 

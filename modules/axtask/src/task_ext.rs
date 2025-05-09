@@ -105,6 +105,7 @@ impl AxTaskExt {
 
 impl Drop for AxTaskExt {
     fn drop(&mut self) {
+        warn!("drop task ext ,{:p}", self.ptr);
         if !self.ptr.is_null() {
             unsafe extern "C" {
                 fn __ax_task_ext_drop(data: *mut u8);

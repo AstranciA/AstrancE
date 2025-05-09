@@ -51,6 +51,7 @@ syscall_handler_def!(
                 args[0] as i32,
                 args[1] as *mut i32,
             ) {
+                warn!("wait4: {:?}", wait_result);
                 let r = match wait_result {
                     Ok(pid) => {
                         result = Ok(pid as isize);

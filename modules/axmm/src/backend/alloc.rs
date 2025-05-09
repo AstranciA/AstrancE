@@ -209,7 +209,7 @@ impl Backend {
             // TODO: update frame ref in addr space
             #[cfg(feature = "COW")]
             // FIXME: false flag check
-            if !(orig_flags.contains(MappingFlags::WRITE)){
+            if !(orig_flags.contains(MappingFlags::COW)){
                 return false
             }
             #[cfg(feature = "COW")]
