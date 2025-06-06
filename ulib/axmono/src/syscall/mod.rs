@@ -34,16 +34,24 @@ syscall_handler_def!(
         exit_group => [code,..]{
             task::exit::sys_exit_group((code & 0xff) as i32)
         }
-        clone => [flags, sp, ..] {
+        clone => [flags, stack, ptid, ctid, tls, ..] {
             let clone_flags = CloneFlags::from_bits_retain(flags as u32);
-
+            warn!("clone(flags={:#x}, stack={:#x}, ptid={:#x}, ctid={:#x}, tls={:#x})", flags, stack, ptid, ctid, tls);
+            
+            // 调用任务克隆函数，传递所有必要参数
             let child_task = task::clone_task(
-                if (sp != 0) { Some(sp) } else { None },
+                if stack != 0 { Some(stack) } else { None },
                 clone_flags,
-                true,
+                true, // 表示用户态线程
+                if ptid != 0 { Some(ptid as *mut i32) } else { None }, // 父线程 ID 指针
+                if ctid != 0 { Some(ctid as *mut i32) } else { None }, // 子线程 ID 指针
+                if tls != 0 { Some(tls as *mut c_void) } else { None }, // TLS 指针
             )?;
+            
+            // 返回新任务的进程 ID
             Ok(child_task.task_ext().thread.process().pid() as isize)
         }
+
         wait4 => [pid, wstatus, options, reusage, ..] {
             let curr = current();
             crate::sys_waitpid(
@@ -146,11 +154,32 @@ syscall_handler_def!(
         setxattr => _ {
             Ok(0)
         }
-        futex => _ {
-            warn!("futex syscall not implemented, task exit");
-            task::sys_exit(-1);
-            Ok(-1)
+        // 在系统调用处理部分修改 futex 的实现
+        // 在系统调用处理部分修改 futex 的实现
+        futex => [uaddr, op, val, timeout, uaddr2, val3, ..] {
+            let operation = op & 0x7F; // 去掉私有标志位
+            match operation {
+                0 => { // FUTEX_WAIT
+                    warn!("futex WAIT operation, blocking thread at address {:#x}, expected value {}", uaddr, val);
+                    let result = axtask::futex_wait(uaddr as *mut i32, val as i32, timeout as *const _);
+                    match result {
+                        Ok(()) => Ok(0),
+                        Err(err) => Err(err), // 直接返回 LinuxError 枚举值
+                    }
+                },
+                1 => { // FUTEX_WAKE
+                    warn!("futex WAKE operation, waking up to {} threads at address {:#x}", val, uaddr);
+                    let woken = axtask::futex_wake(uaddr as *mut i32, val as usize);
+                    Ok(woken as isize)
+                },
+                _ => {
+                    warn!("Unsupported futex operation: {}", operation);
+                    Err(LinuxError::ENOSYS) // 使用 LinuxError 枚举表示功能未实现
+                }
+            }
         }
+
+
 );
 
 fn foo() {

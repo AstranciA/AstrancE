@@ -12,7 +12,7 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
-use core::ffi::c_int;
+use core::ffi::{c_int, c_void};
 use arceos_posix_api::{FD_TABLE, ctypes::*};
 use axerrno::{AxError, AxResult, LinuxError, LinuxResult};
 use axfs::{
@@ -232,18 +232,23 @@ impl ThreadData {
 /// **Return**
 /// - `Ok(new_task_ref)` if fork successfully
 pub fn fork(from_umode: bool) -> LinuxResult<AxTaskRef> {
-    clone_task(None, CloneFlags::empty(), from_umode)
+    clone_task(
+        None,                  // stack: 不指定新栈指针
+        CloneFlags::empty(),   // flags: 不设置标志位，创建独立进程
+        from_umode,            // from_umode: 调用来自用户态
+        None,                  // ptid: 不需要设置父线程 ID 指针
+        None,                  // ctid: 不需要设置子线程 ID 指针
+        None                   // tls: 不需要设置 TLS 指针
+    )
 }
 
 pub fn clone_task(
     stack: Option<usize>,
     flags: CloneFlags,
     from_umode: bool,
-    /*
-     *_ptid: usize,
-     *_tls: usize,
-     *_ctid: usize,
-     */
+    ptid: Option<*mut i32>,
+    ctid: Option<*mut i32>,
+    tls: Option<*mut c_void>,
 ) -> LinuxResult<AxTaskRef> {
     debug!("clone_task with flags: {:?}", flags);
     let curr = current();
@@ -260,11 +265,17 @@ pub fn clone_task(
         trap_frame.step_ip();
     }
 
-    // TODO: clone stack since it's always changed.
-    // stack is copied meanwhilst addr space is copied
-    //trap_frame.set_user_sp(stack);
+    // 设置栈指针
     if let Some(stack) = stack {
         trap_frame.set_user_sp(stack);
+    }
+
+    // 处理 SETTLS 标志位，设置 TLS 指针
+    if flags.contains(CloneFlags::SETTLS) {
+        if let Some(tls_ptr) = tls {
+            // 设置 TLS 指针，在 RISC-V 架构中通过 tp 寄存器设置
+            trap_frame.set_tls(tls_ptr as usize);
+        }
     }
 
     let new_uctx = UspaceContext::from(&trap_frame);
@@ -346,11 +357,30 @@ pub fn clone_task(
     };
 
     let thread_data = ThreadData::new(process.data().unwrap());
-    /* TODO: child_tid
-     *if flags.contains(CloneFlags::CHILD_CLEARTID) {
-     *    thread_data.set_clear_child_tid(child_tid);
-     *}
-     */
+    // 处理 CHILD_CLEARTID 标志位
+    if flags.contains(CloneFlags::CHILD_CLEARTID) {
+        if let Some(ctid_ptr) = ctid {
+            thread_data.set_clear_child_tid(ctid_ptr as usize);
+        }
+    }
+
+    // 处理 PARENT_SETTID 标志位
+    if flags.contains(CloneFlags::PARENT_SETTID) {
+        if let Some(ptid_ptr) = ptid {
+            unsafe {
+                *ptid_ptr = tid as i32;
+            }
+        }
+    }
+
+    // 处理 CHILD_SETTID 标志位
+    if flags.contains(CloneFlags::CHILD_SETTID) {
+        if let Some(ctid_ptr) = ctid {
+            unsafe {
+                *ctid_ptr = tid as i32;
+            }
+        }
+    }
 
     let thread = process.new_thread(tid).data(thread_data).build();
     add_thread_to_table(&thread);

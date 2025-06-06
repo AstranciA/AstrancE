@@ -704,6 +704,7 @@ name = "axtask"
 version = "0.1.0"
 dependencies = [
  "axconfig",
+ "axerrno",
  "axhal",
  "axtask",
  "cfg-if",
@@ -717,6 +718,7 @@ dependencies = [
  "percpu",
  "rand",
  "scheduler",
+ "spin 0.9.8",
  "timer_list",
 ]
 
