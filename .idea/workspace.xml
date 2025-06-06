@@ -197,17 +197,10 @@
     </cargoProject>
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="7c2d0aa3-ed80-457d-a6b3-f7e100db3c2a" name="Changes" comment="lua support">
+    <list default="true" id="7c2d0aa3-ed80-457d-a6b3-f7e100db3c2a" name="Changes" comment="futex">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/arceos_posix_api/src/imp/fs.rs" beforeDir="false" afterPath="$PROJECT_DIR$/api/arceos_posix_api/src/imp/fs.rs" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/crates/lwext4_rust" beforeDir="false" afterPath="$PROJECT_DIR$/crates/lwext4_rust" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/crates/lwext4_rust/c/lwext4" beforeDir="false" afterPath="$PROJECT_DIR$/crates/lwext4_rust/c/lwext4" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/crates/lwext4_rust/c/lwext4/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/crates/lwext4_rust/c/lwext4/CMakeLists.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/crates/lwext4_rust/c/lwext4/Makefile" beforeDir="false" afterPath="$PROJECT_DIR$/crates/lwext4_rust/c/lwext4/Makefile" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/crates/lwext4_rust/c/lwext4/src/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/crates/lwext4_rust/c/lwext4/src/CMakeLists.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/modules/axfs/src/fops.rs" beforeDir="false" afterPath="$PROJECT_DIR$/modules/axfs/src/fops.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ulib/axmono/src/syscall/mm.rs" beforeDir="false" afterPath="$PROJECT_DIR$/ulib/axmono/src/syscall/mm.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ulib/axmono/src/task/process.rs" beforeDir="false" afterPath="$PROJECT_DIR$/ulib/axmono/src/task/process.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -288,25 +281,25 @@
       <window_info id="Merge Requests" />
       <window_info id="Backup and Sync History" />
       <window_info id="Commit_Guest" show_stripe_button="false" />
-      <window_info active="true" content_ui="combo" id="Project" order="0" sideWeight="0.5015174" visible="true" weight="0.32925558" />
-      <window_info id="Commit" order="1" weight="0.32925558" />
+      <window_info active="true" content_ui="combo" id="Project" order="0" sideWeight="0.5015174" visible="true" weight="0.22254035" />
+      <window_info id="Commit" order="1" weight="0.22254035" />
       <window_info id="Structure" order="2" sideWeight="0.49848253" side_tool="true" weight="0.23815721" />
-      <window_info id="Pull Requests" order="3" weight="0.18922436" />
+      <window_info id="Pull Requests" order="3" weight="0.22254035" />
       <window_info anchor="bottom" id="NextEditPredictionSettingsToolwindow" />
       <window_info anchor="bottom" id="Database Changes" />
       <window_info anchor="bottom" id="TypeScript" />
       <window_info anchor="bottom" id="Debug" />
-      <window_info anchor="bottom" id="TODO" />
       <window_info anchor="bottom" id="Messages" />
       <window_info anchor="bottom" id="File Transfer" />
-      <window_info anchor="bottom" id="Terminal" order="0" />
+      <window_info active="true" anchor="bottom" id="Terminal" order="0" visible="true" weight="0.3015489" />
       <window_info anchor="bottom" id="Services" order="1" weight="0.34898353" />
-      <window_info active="true" anchor="bottom" x="81" y="557" width="1839" height="331" id="Version Control" order="2" visible="true" weight="0.16892546" />
+      <window_info anchor="bottom" x="81" y="557" width="1839" height="331" id="Version Control" order="2" weight="0.43707648" />
       <window_info anchor="bottom" id="Problems" order="3" />
       <window_info anchor="bottom" id="Problems View" order="4" weight="0.36640853" />
       <window_info anchor="bottom" id="Find" order="5" weight="0.28702807" />
       <window_info anchor="bottom" id="Build" order="6" weight="0.39351404" />
       <window_info anchor="bottom" id="Run" order="7" weight="0.48063892" />
+      <window_info anchor="bottom" id="TODO" order="8" weight="0.43707648" />
       <window_info anchor="right" id="PR AI Assistant" />
       <window_info anchor="right" id="Notifications" order="0" weight="0.32977617" />
       <window_info anchor="right" id="AIAssistant" order="1" />
@@ -419,7 +412,10 @@
       <workItem from="1748252146776" duration="10835000" />
       <workItem from="1748349150386" duration="10476000" />
       <workItem from="1748405338632" duration="6447000" />
-      <workItem from="1748529820358" duration="6020000" />
+      <workItem from="1748529820358" duration="6456000" />
+      <workItem from="1749056830746" duration="50000" />
+      <workItem from="1749105337211" duration="6917000" />
+      <workItem from="1749225723524" duration="3379000" />
     </task>
     <task id="LOCAL-00001" summary="Changes">
       <option name="closed" value="true" />
@@ -549,7 +545,23 @@
       <option name="project" value="LOCAL" />
       <updated>1748409475925</updated>
     </task>
-    <option name="localTasksCounter" value="17" />
+    <task id="LOCAL-00017" summary="busybox fix">
+      <option name="closed" value="true" />
+      <created>1748541677582</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1748541677582</updated>
+    </task>
+    <task id="LOCAL-00018" summary="futex">
+      <option name="closed" value="true" />
+      <created>1749226466230</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1749226466230</updated>
+    </task>
+    <option name="localTasksCounter" value="19" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -594,7 +606,7 @@
                   <entry key="branch">
                     <value>
                       <list>
-                        <option value="dev_ycy" />
+                        <option value="origin/main" />
                       </list>
                     </value>
                   </entry>
@@ -621,7 +633,9 @@
     <MESSAGE value="修改了函数名，完善系统调用" />
     <MESSAGE value="mmap first" />
     <MESSAGE value="lua support" />
-    <option name="LAST_COMMIT_MESSAGE" value="lua support" />
+    <MESSAGE value="busybox fix" />
+    <MESSAGE value="futex" />
+    <option name="LAST_COMMIT_MESSAGE" value="futex" />
   </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />

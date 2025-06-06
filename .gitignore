@@ -1,6 +1,6 @@
 /target
 /.vscode
-/.idea
+/.idea/*
 .DS_Store
 *.asm
 *.img

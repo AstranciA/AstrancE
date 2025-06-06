@@ -430,7 +430,7 @@ pub fn exec_current(program_name: &str, args: &[String], envs: &[String]) -> AxR
         ExecType::Shell => {
             program_path = "/usr/bin/busybox".to_string();
             args_.push(program_path.clone());
-            args_.push("ash".to_string());
+            args_.push("sh".to_string());
             load_elf_from_disk(program_path.as_str()).unwrap()
         }
         _ => {
