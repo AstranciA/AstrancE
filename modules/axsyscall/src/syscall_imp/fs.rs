@@ -4,7 +4,7 @@ use arceos_posix_api::{self as api, char_ptr_to_str, ctypes};
 use axfs::api::set_current_dir;
 use axlog::debug;
 use core::ffi::{c_char, c_int, c_long, c_longlong, c_void};
-use crate::syscall_imp::time::sys_get_time_of_day;
+use axfs_vfs::FileSystemInfo;
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
@@ -200,6 +200,30 @@ pub fn sys_utimesat(
     now: timeval,
     flags: c_int
 ) -> SyscallResult {
-   api::sys_utimensat(dirfd,path,times,now,flags)
+   api::sys_utimensat(dirfd,path,times,now,flags)?.to_linux_result()
 }
 
+pub fn sys_pread64(
+    fd: c_int,
+    buf: *mut u8,
+    count:usize,
+    offset:isize
+)->SyscallResult {
+    api::sys_pread64(fd, buf, count, offset)?.to_linux_result()
+}
+
+pub fn sys_pwrite64(
+    fd: c_int,
+    buf: *const u8,
+    count:usize,
+    offset:isize
+) -> SyscallResult{
+    api::sys_pwrite64(fd, buf, count, offset)?.to_linux_result()
+}
+
+pub fn sys_statfs(
+    _path: *const c_char,
+    stat_fs:*mut FileSystemInfo
+)->SyscallResult {
+    api::sys_statfs(_path,stat_fs)?.to_linux_result()
+}

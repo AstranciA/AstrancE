@@ -11,8 +11,9 @@ use crate::{
     fs::{self},
     mounts,
 };
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::{sync::Arc, vec::Vec};
+use alloc::borrow::ToOwned;
 use axdriver::AxBlockDevice;
 use axerrno::{AxError, AxResult, ax_err};
 use axfs_devfs::DeviceFileSystem;
@@ -138,6 +139,26 @@ impl RootDirectory {
 
     fn root_dir() -> Arc<RootDirectory> {
         ROOT_DIR.get().expect("ROOT_DIR not initialized").clone()
+    }
+
+    pub fn find_mountpoint_and_fs(&self, path: &str) -> AxResult<(String, Arc<dyn VfsOps>)> {
+        let path = axfs_vfs::path::canonicalize(path);
+        let mounts = self.mounts.read();
+
+        // 默认指向 main_fs，挂载点是 "/"
+        let mut best_match = "/";
+        let mut fs = self.main_fs.clone();
+
+        for mp in mounts.iter() {
+            if path == mp.path || path.starts_with(&(mp.path.to_owned() + "/")) {
+                if mp.path.len() > best_match.len() {
+                    best_match = mp.path;
+                    fs = mp.fs.clone();
+                }
+            }
+        }
+
+        Ok((best_match.to_string(), fs))
     }
 }
 

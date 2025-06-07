@@ -2,12 +2,13 @@ use crate::alloc::string::String;
 use alloc::string::ToString;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use core::ffi::{c_char, c_void};
+use core::ffi::{c_char, c_void, c_long, c_ulong, c_int};
+use core::{mem, ptr};
 use axerrno::AxError;
-use axfs_vfs::{VfsDirEntry, VfsError, VfsNodePerm, VfsResult};
+use axfs_vfs::{FileSystemInfo,VfsDirEntry, VfsError, VfsNodePerm, VfsResult};
 use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps};
 use axsync::Mutex;
-use lwext4_rust::bindings::{ext4_getxattr, ext4_removexattr, O_CREAT, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY, SEEK_CUR, SEEK_END, SEEK_SET};
+use lwext4_rust::bindings::{ext4_file, ext4_get_sblock, ext4_getxattr, ext4_inode, ext4_removexattr, ext4_sblock, O_CREAT, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY, SEEK_CUR, SEEK_END, SEEK_SET};
 use lwext4_rust::{Ext4BlockWrapper, Ext4File, InodeTypes, KernelDevOp};
 
 use crate::dev::Disk;
@@ -88,6 +89,67 @@ impl<T: KernelDevOp<DevType = T>> VfsOps for Ext4FileSystem<T> {
      *    unimplemented!()
      *}
      */
+    fn statfs(&self, _path: *const c_char, fs_info: *mut FileSystemInfo) -> VfsResult<usize> {
+        let mut sb_ptr: *mut ext4_sblock = ptr::null_mut();
+        let ret = unsafe{
+            ext4_get_sblock(_path, &mut sb_ptr as *mut _)
+        };
+        
+        if ret == 0 && !sb_ptr.is_null() {
+            unsafe{init_filesystem_info(sb_ptr, fs_info)};
+            Ok(0)
+        }
+        else { 
+            Err(VfsError::NotFound)
+        }
+    }
+}
+
+pub unsafe fn init_filesystem_info(sb: *const ext4_sblock, fs_info: *mut FileSystemInfo) -> c_int {
+    if sb.is_null() || fs_info.is_null() {
+        return -1; // EINVAL
+    }
+
+    let sblock = &*sb;
+    let info = &mut *fs_info;
+
+    // 块大小 = 1024 << log_block_size
+    info.bsize = (1024 << sblock.log_block_size) as u64;
+
+    // 总块数
+    let blocks_count = (sblock.blocks_count_hi as u64) << 32 | sblock.blocks_count_lo as u64;
+    info.blocks = blocks_count;
+
+    // 空闲块数
+    let free_blocks = (sblock.free_blocks_count_hi as u64) << 32 | sblock.free_blocks_count_lo as u64;
+    info.bfree = free_blocks;
+
+    // 普通用户可用块数（暂设与空闲块相同）
+    info.bavail = free_blocks;
+
+    // inode 总数
+    info.files = sblock.inodes_count as u64;
+
+    // 空闲 inode 数
+    info.ffree = sblock.free_inodes_count as u64;
+
+    // 文件系统 ID（使用 UUID 的前8字节组合为 u64）
+    info.fsid = ((sblock.uuid[0] as u64) << 56) |
+        ((sblock.uuid[1] as u64) << 48) |
+        ((sblock.uuid[2] as u64) << 40) |
+        ((sblock.uuid[3] as u64) << 32) |
+        ((sblock.uuid[4] as u64) << 24) |
+        ((sblock.uuid[5] as u64) << 16) |
+        ((sblock.uuid[6] as u64) << 8)  |
+        (sblock.uuid[7] as u64);
+
+    // 最大文件名长度
+    info.namelen = 255;
+
+    // 文件系统类型
+    info.ftype = 0xEF53;
+
+    0 // 成功
 }
 
 pub struct FileWrapper(Mutex<Ext4File>);

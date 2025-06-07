@@ -3,10 +3,11 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use axfs::CURRENT_DIR;
 use axfs::api::{DirEntry, create_dir, read_dir, remove_file};
-use axfs::root::ROOT_DIR;
-use axfs_vfs::{VfsDirEntry, VfsNodeAttr, VfsNodeOps, VfsNodeType};
+use axfs::root::{RootDirectory, ROOT_DIR};
+use axfs_vfs::{FileSystemInfo, VfsDirEntry, VfsNodeAttr, VfsNodeOps, VfsNodeType};
 use core::ffi::{c_char, c_int, c_long, c_longlong, c_uint, c_void};
-use core::{panic, ptr};
+use core::{panic, ptr, slice};
+use core::str::from_utf8;
 use static_assertions::assert_eq_size;
 
 use super::fd_ops::{FileLike, get_file_like};
@@ -88,19 +89,29 @@ impl FileLike for File {
         Ok(attr2stat(metadata))
     }
 
+    fn read_at(&self, _buf: &mut [u8], _offset: u64) -> LinuxResult<usize> {
+        self.inner.lock()
+          .read_at(_offset,_buf).map_err(LinuxError::from)
+    }
+
+    fn write_at(&self, _buf: &[u8], _offset: u64) -> LinuxResult<usize> {
+        self.inner.lock()
+            .write_at(_offset, _buf).map_err(LinuxError::from)
+    }
+
     fn set_atime(&self, atime: u32, atime_n: u32) -> LinuxResult<usize> {
-        self.inner
+        let r =self.inner
             .lock()
             .set_atime(atime, atime_n)
             .map_err(|_| LinuxError::EIO)?;
-        Ok(0)
+        Ok(r)
     }
     fn set_mtime(&self, mtime: u32, mtime_n: u32) -> LinuxResult<usize> {
-        self.inner
+        let r = self.inner
             .lock()
             .set_mtime(mtime, mtime_n)
             .map_err(|_| LinuxError::EIO)?;
-        Ok(0)
+        Ok(r)
     }
     fn into_any(self: Arc<Self>) -> Arc<dyn core::any::Any + Send + Sync> {
         self
@@ -724,6 +735,21 @@ impl FileLike for Directory {
         Ok(())
     }
 
+    fn set_atime(&self, atime: u32, atime_n: u32) -> LinuxResult<usize> {
+        let r =self.inner
+            .lock()
+            .set_atime(atime, atime_n)
+            .map_err(|_| LinuxError::EIO)?;
+        Ok(r)
+    }
+    fn set_mtime(&self, mtime: u32, mtime_n: u32) -> LinuxResult<usize> {
+        let r = self.inner
+            .lock()
+            .set_mtime(mtime, mtime_n)
+            .map_err(|_| LinuxError::EIO)?;
+        Ok(r)
+    }
+    
     fn fgetxattr(
         &self,
         name: *const c_char,
@@ -973,7 +999,6 @@ pub fn sys_unlink(path: *const c_char) -> LinuxResult<isize> {
     let path = char_ptr_to_str(path).map_err(|_| LinuxError::EFAULT)?;
     warn!("sys_unlink <= {:?}", path);
     remove_file(path)?;
-    warn!("sys_unlink <= {:?}", path);
     Ok(0)
 }
 pub fn sys_unlinkat(dir_fd: i32, path: *const c_char) -> LinuxResult<isize> {
@@ -1103,12 +1128,55 @@ pub fn sys_utimensat(
             return Err(LinuxError::EBADF);
         }
         let file = get_file_like(dirfd).map_err(|_| LinuxError::EBADF)?;
-        // if let Some((sec, nsec)) = atime_opt {
-        //     file.set_atime(sec, nsec).map_err(|_| LinuxError::EIO)?;
-        // }
-        // if let Some((sec, nsec)) = mtime_opt {
-        //     file.set_mtime(sec, nsec).map_err(|_| LinuxError::EIO)?;
-        // }
+        if let Some((sec, nsec)) = atime_opt {
+            file.set_atime(sec, nsec).map_err(|_| LinuxError::EIO)?;
+        }
+        if let Some((sec, nsec)) = mtime_opt {
+            file.set_mtime(sec, nsec).map_err(|_| LinuxError::EIO)?;
+        }
         Ok(0)
     }
+}
+
+pub fn sys_pread64(
+    fd: c_int,
+    buf: *mut u8,
+    count:usize,
+    offset:isize
+) -> LinuxResult<isize> {
+    let file = get_file_like(fd).map_err(|_| LinuxError::EBADF)?;
+    let mut slice = unsafe { slice::from_raw_parts_mut(buf, count) };
+    file.read_at(slice , offset as u64).map(|n| n as isize)
+}
+
+pub fn sys_pwrite64(
+    fd: c_int,
+    buf: *const u8,
+    count:usize,
+    offset:isize
+) -> LinuxResult<isize> {
+    let file = get_file_like(fd).map_err(|_| LinuxError::EBADF)?;
+    let mut slice = unsafe { slice::from_raw_parts(buf, count) };
+    file.write_at(slice , offset as u64).map(|n| n as isize)
+}
+
+pub unsafe fn c_char_to_str(c_str: *const c_char) -> Result<&'static str, LinuxError> {
+    if c_str.is_null() {
+        return Err(LinuxError::EINVAL); // 或其它适当错误
+    }
+    let mut len = 0;
+    while *c_str.add(len) != 0 {
+        len += 1;
+    }
+    let bytes = slice::from_raw_parts(c_str as *const u8, len);
+    from_utf8(bytes).map_err(|_| LinuxError::EINVAL) // 或其它编码错误
+}
+pub fn sys_statfs(
+    mount_point: *const c_char,
+    stat_fs: *mut FileSystemInfo
+)->LinuxResult<isize>{
+    let path = unsafe{c_char_to_str(mount_point.clone())?};
+    let (mountpoint, fs) = ROOT_DIR.find_mountpoint_and_fs(path)?;
+    let ret = fs.statfs(mount_point,stat_fs)?;
+    Ok(ret as isize)
 }

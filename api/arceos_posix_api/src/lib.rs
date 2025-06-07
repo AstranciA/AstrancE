@@ -49,7 +49,7 @@ pub use imp::fs::{
     Directory, File, add_file_or_directory_fd, sys_fgetxattr, sys_fremovexattr, sys_fsetxattr,
     sys_fstat, sys_fstatat, sys_getcwd, sys_getdents, sys_listxattr, sys_lseek, sys_lstat,
     sys_mkdirat, sys_mount, sys_open, sys_openat, sys_rename, sys_stat, sys_umount2, sys_unlink,
-    sys_unlinkat, sys_utimensat,
+    sys_unlinkat, sys_utimensat,sys_pread64,sys_pwrite64,sys_statfs,
 };
 #[cfg(feature = "select")]
 pub use imp::io_mpx::sys_select;

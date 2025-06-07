@@ -691,6 +691,7 @@ dependencies = [
  "axconfig",
  "axerrno",
  "axfs",
+ "axfs_vfs",
  "axhal",
  "axlog",
  "axmm",

@@ -78,6 +78,33 @@ pub(crate) fn sys_sigaction(
     Ok(0)
 }
 
+// pub(crate) fn sys_sigprocmask(
+//     how: c_int,
+//     set: *const sigset_t,
+//     oldset: *mut sigset_t,
+// ) -> LinuxResult<isize> {
+//     let curr = current();
+//     let mut sigctx = curr.task_ext().process_data().signal.lock();
+// 
+//     if !set.is_null() {
+//         let set: SignalSet = unsafe { *set }.into();
+// 
+//         let old = match how as u32 {
+//             SIG_BLOCK => sigctx.block(set),
+//             SIG_UNBLOCK => sigctx.unblock(set),
+//             SIG_SETMASK => sigctx.set_mask(set),
+//             _ => return Err(LinuxError::EINVAL),
+//         };
+//         unsafe {
+//             oldset
+//                 .as_mut()
+//                 .map(|ptr| unsafe { *ptr }.sig[0] = old.bits())
+//         };
+//     }
+// 
+//     Ok(0)
+// }
+
 pub(crate) fn sys_sigprocmask(
     how: c_int,
     set: *const sigset_t,
@@ -86,20 +113,25 @@ pub(crate) fn sys_sigprocmask(
     let curr = current();
     let mut sigctx = curr.task_ext().process_data().signal.lock();
 
+    // 先保存旧的 mask
+    let old_mask = sigctx.get_blocked();
+
+    // 如果 set 非 null，则根据 how 修改 mask
     if !set.is_null() {
         let set: SignalSet = unsafe { *set }.into();
-
-        let old = match how as u32 {
+        match how as u32 {
             SIG_BLOCK => sigctx.block(set),
             SIG_UNBLOCK => sigctx.unblock(set),
             SIG_SETMASK => sigctx.set_mask(set),
             _ => return Err(LinuxError::EINVAL),
         };
+    }
+
+    // 如果用户请求 oldset，则写入旧的 mask
+    if !oldset.is_null() {
         unsafe {
-            oldset
-                .as_mut()
-                .map(|ptr| unsafe { *ptr }.sig[0] = old.bits())
-        };
+            (*oldset).sig[0] = old_mask.bits();
+        }
     }
 
     Ok(0)

@@ -7,6 +7,8 @@
     <mapping directory="$PROJECT_DIR$/crates/fast-trap" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/crates/lwext4_rust" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/crates/lwext4_rust/c/lwext4" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/crates/lwext4_rust_d" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/crates/lwext4_rust_d/c/lwext4" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/crates/page_table_multiarch" vcs="Git" />
   </component>
 </project>

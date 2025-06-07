@@ -105,6 +105,16 @@ syscall_handler_def!(
         }
         getuid => _{
             Ok(0)
+            //TODO: to acomplish the puid()
+            // Ok(current().task_ext().thread.process().group().puid() as _)
+        }
+        geteuid => _{
+            //TODO:geteuid ::returns the effective user ID of the calling process
+            Ok(0)
+        }
+        getegid => _ {
+            //getegid::returns the effective group ID of the calling process
+            Ok(0)
         }
         // FIXME: cutime cstimes
         times => args {

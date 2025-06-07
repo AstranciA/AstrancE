@@ -289,12 +289,12 @@ impl File {
     }
 
     pub fn set_atime(&self, atime:u32,  atime_n:u32) -> AxResult<usize> {
-        self.access_node(Cap::WRITE)?.set_atime(atime,atime_n)?;
-        Ok(0)
+        let r =self.access_node(Cap::empty())?.set_atime(atime,atime_n)?;
+        Ok(r)
     }
     pub fn set_mtime(&self, mtime:u32, mtime_n:u32) -> AxResult<usize>{
-        self.access_node(Cap::WRITE)?.set_mtime(mtime,mtime_n)?;
-        Ok(0)
+        let r = self.access_node(Cap::empty())?.set_mtime(mtime,mtime_n)?;
+        Ok(r)
     }
     ///do something for the file extra attributes
     pub fn get_xattr(
@@ -449,7 +449,14 @@ impl Directory {
     pub fn get_attr(&self) -> AxResult<FileAttr> {
         self.access_node(Cap::empty())?.get_attr()
     }
-
+    
+    ///set atime and mtime
+    pub fn set_atime(&self, atime:u32,  atime_n:u32) -> AxResult<usize> {
+        self.access_node(Cap::WRITE)?.set_atime(atime,atime_n)
+    }
+    pub fn set_mtime(&self, mtime:u32, mtime_n:u32) -> AxResult<usize>{
+        self.access_node(Cap::WRITE)?.set_mtime(mtime,mtime_n)
+    }
     ///do something for the dir extra attributes
     pub fn get_xattr(
         &self,
