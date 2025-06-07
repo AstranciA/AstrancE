@@ -19,6 +19,7 @@ use xmas_elf::ElfFile;
 
 use crate::dynamic::{find_interpreter, load_interpreter, relocate_interpreter_segments};
 use crate::elf::{check_segments_overlap, find_safe_base_address, get_program_address_range};
+use crate::task::{self, read_trapframe_from_kstack};
 use crate::{
     copy_from_kernel,
     elf::{ELFInfo, OwnedElfFile},
@@ -237,12 +238,12 @@ fn map_elf_sections_with_auxv(
     args.map(|args| args_.extend_from_slice(args));
     let mut envs_ = Vec::new();
     envs.map(|env| envs_.extend_from_slice(env));
-/*
- *    envs_.push("MUSL_DEBUG=2".into());
- *    envs_.push("LD_DEBUG=all".into());
- *    envs_.push("MUSL_DEBUGFLAGS=6".into());
- *
- */
+    /*
+     *    envs_.push("MUSL_DEBUG=2".into());
+     *    envs_.push("LD_DEBUG=all".into());
+     *    envs_.push("MUSL_DEBUGFLAGS=6".into());
+     *
+     */
     // 映射ELF段
     map_elf_segments(&interp_info, uspace, &mut tp)?;
 
@@ -388,6 +389,20 @@ fn handle_page_fault(vaddr: VirtAddr, access_flags: MappingFlags, is_user: bool)
     let current = current();
     let mut aspace = current.task_ext().process_data().aspace.lock();
     let result = aspace.handle_page_fault(vaddr, access_flags);
-    debug!("Page fault result: {result:?}");
+    if !result && is_user {
+        error!(
+            "Unhandled user page fault at {:#x?}, access_flags: {access_flags:?}",
+            vaddr
+        );
+        if let Some(kstack) = current.get_kernel_stack_top() {
+        debug!(
+            "page fault user trap frame:\n{:#x?}",
+            read_trapframe_from_kstack(kstack)
+        );
+        } 
+        // TODO: Send SIGSEGV
+        drop(aspace);
+        task::sys_exit(-139);
+    }
     result
 }

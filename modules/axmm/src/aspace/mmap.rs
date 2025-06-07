@@ -99,6 +99,7 @@ impl AddrSpace {
         } else if flags.contains(MmapFlags::MAP_FIXED_NOREPLACE) {
             start
         } else {
+            let start = if start.as_usize() == 0 { va!(0x1000) } else { start };
             #[cfg(feature = "heap")]
             {
                 // should below heap
@@ -109,7 +110,7 @@ impl AddrSpace {
                     .unwrap_or(MMAP_END)
                     .into();
                 self.find_free_area(
-                    0x1000.into(),
+                    start.into(),
                     size,
                     addr_range!(self.base().as_usize()..heap_start),
                 )
@@ -118,7 +119,7 @@ impl AddrSpace {
             #[cfg(not(feature = "heap"))]
             {
                 self.find_free_area(
-                    0x1000.into(),
+                    start.into(),
                     size,
                     addr_range!(self.base().as_usize()..MMAP_END.into()),
                 )
@@ -126,10 +127,13 @@ impl AddrSpace {
             }
         };
 
-
         let mut map_flags: MappingFlags = perm.into();
         map_flags = map_flags | MappingFlags::DEVICE;
-        debug!("mmap at: [{:#x}, {:#x}), {map_flags:?}", start, start + size);
+        debug!(
+            "mmap at: [{:#x}, {:#x}), {map_flags:?}",
+            start,
+            start + size
+        );
         mmap_io.set_base(start);
 
         let area = MemoryArea::new_mmap(

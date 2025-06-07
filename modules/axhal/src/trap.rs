@@ -77,10 +77,15 @@ pub(crate) fn handle_syscall(tf: &mut TrapFrame, syscall_num: usize) -> isize {
         }
     }
 
-    debug!("syscall_handler result: {:x?}", result);
-    // 38: ENOSYS
-    // TODO: loongarch ENOSYS??
-    result.unwrap_or(-38)
+    if let Some(r) = result {
+        debug!("syscall_handler result: {:x?}", r);
+        r
+    } else {
+        error!("no handler can process syscall {:x?}", syscall_num);
+        // 38: ENOSYS
+        // TODO: loongarch ENOSYS??
+        -38
+    }
 }
 
 pub(crate) fn pre_trap(tf: &mut TrapFrame, from_user: bool) -> bool {
