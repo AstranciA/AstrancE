@@ -74,5 +74,4 @@ int chmod(const char *file, mode_t mode);
 int mkdir(const char *pathname, mode_t mode);
 mode_t umask(mode_t mask);
 int fstatat(int, const char *__restrict, struct stat *__restrict, int);
-
 #endif

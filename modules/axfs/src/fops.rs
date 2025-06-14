@@ -21,6 +21,7 @@ pub type FileType = axfs_vfs::VfsNodeType;
 pub type DirEntry = axfs_vfs::VfsDirEntry;
 /// Alias of [`axfs_vfs::VfsNodeAttr`].
 pub type FileAttr = axfs_vfs::VfsNodeAttr;
+pub type FileAttrX = axfs_vfs::VfsNodeAttrX;
 /// Alias of [`axfs_vfs::VfsNodePerm`].
 pub type FilePerm = axfs_vfs::VfsNodePerm;
 
@@ -287,7 +288,10 @@ impl File {
     pub fn get_attr(&self) -> AxResult<FileAttr> {
         self.access_node(Cap::empty())?.get_attr()
     }
-
+    
+    pub fn get_attr_x(&self) -> AxResult<FileAttrX> {
+        self.access_node(Cap::empty())?.get_attr_x()
+    }
     pub fn set_atime(&self, atime:u32,  atime_n:u32) -> AxResult<usize> {
         let r =self.access_node(Cap::empty())?.set_atime(atime,atime_n)?;
         Ok(r)
@@ -449,7 +453,10 @@ impl Directory {
     pub fn get_attr(&self) -> AxResult<FileAttr> {
         self.access_node(Cap::empty())?.get_attr()
     }
-    
+
+    pub fn get_attr_x(&self) -> AxResult<FileAttrX> {
+        self.access_node(Cap::empty())?.get_attr_x()
+    }
     ///set atime and mtime
     pub fn set_atime(&self, atime:u32,  atime_n:u32) -> AxResult<usize> {
         self.access_node(Cap::WRITE)?.set_atime(atime,atime_n)

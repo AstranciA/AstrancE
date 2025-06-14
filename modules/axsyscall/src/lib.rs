@@ -147,7 +147,10 @@ syscall_handler_def!(
         fstat => [fd, buf, ..] {
             unsafe { apply!(syscall_imp::fs::sys_fstat, fd, buf) }
         }
-
+        
+        statx => [dirfd, path, flags, mask, buf, ..]{
+            unsafe{apply!(syscall_imp::fs::sys_statx, dirfd, path, flags, mask, buf)}
+        }
         #[cfg(target_arch = "riscv64")]
         #[cfg(all(feature = "fs", feature = "fd"))]
         fstatat => [dir_fd, pathname, buf, flags, ..] {

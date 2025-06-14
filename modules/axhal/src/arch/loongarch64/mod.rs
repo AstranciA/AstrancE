@@ -210,3 +210,40 @@ pub fn cpu_init() {
     }
     set_exception_entry_base(exception_entry_base as usize);
 }
+
+/// Reads the address of the current trap frame from the KSAVE_KSP CSR.
+///
+/// This function is used to get the address of the saved trap frame when an
+/// interrupt or exception occurs. The trap frame is stored at the top of the
+/// kernel stack, and its address can be calculated based on the value in the
+/// KSAVE_KSP CSR.
+///
+/// # Safety
+/// - This function must be called in kernel mode.
+/// - It assumes that the trap frame has been saved to the kernel stack.
+#[inline(always)]
+pub unsafe fn read_trap_frame() -> usize {
+    let ksp: usize;
+    // 读取 KSAVE_KSP CSR 的值到 ksp 变量
+    asm!(
+    "csrrd {0}, 0x180", // 0x180 是 KSAVE_KSP 的 CSR 编号（根据 LoongArch 手册确认）
+    out(reg) ksp,
+    options(nomem, nostack, preserves_flags)
+    );
+    // 陷入上下文地址 = 内核栈顶地址 - TrapFrame 的大小
+    ksp - core::mem::size_of::<TrapFrame>()
+}
+
+#[inline(always)]
+pub unsafe fn exchange_trap_frame(sp: usize) -> usize {
+    let old_sp: usize;
+    core::arch::asm!(
+    "csrrd {old_sp}, {csr_ksp}",    // 先读取旧的 KSAVE_KSP 值
+    "csrwr {new_sp}, {csr_ksp}",    // 写入新的 sp 到 KSAVE_KSP
+    csr_ksp = const 0x180,           // KSAVE_KSP 的 CSR 编号（假设为 0x40，需确认）
+    old_sp = out(reg) old_sp,
+    new_sp = in(reg) sp,
+    options(nostack, preserves_flags)
+    );
+    old_sp
+}

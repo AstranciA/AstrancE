@@ -191,26 +191,26 @@ impl TrapFrame {
         self.era
     }
 
-    pub fn set_ip(&mut self, era: usize) {
-        self.era = era;
-    }
+    // pub fn set_ip(&mut self, era: usize) {
+    //     self.era = era;
+    // }
 
     pub fn step_ip(&mut self) -> usize {
         self.era += 4;
         self.era
     }
 
-    pub fn set_ra(&mut self, ra: usize) {
-        self.regs.ra = ra
-    }
+    // pub fn set_ra(&mut self, ra: usize) {
+    //     self.regs.ra = ra
+    // }
 
     pub fn set_args(&mut self, args: [usize; 6]) {
-        self.0.regs.a0 = args[0];
-        self.0.regs.a1 = args[1];
-        self.0.regs.a2 = args[2];
-        self.0.regs.a3 = args[3];
-        self.0.regs.a4 = args[4];
-        self.0.regs.a5 = args[5];
+        self.regs.a0 = args[0];
+        self.regs.a1 = args[1];
+        self.regs.a2 = args[2];
+        self.regs.a3 = args[3];
+        self.regs.a4 = args[4];
+        self.regs.a5 = args[5];
     }
 }
 

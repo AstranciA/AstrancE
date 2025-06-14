@@ -13,15 +13,18 @@ use static_assertions::assert_eq_size;
 use super::fd_ops::{FileLike, get_file_like};
 use crate::AT_FDCWD;
 use crate::ctypes::{__IncompleteArrayField, stat, time_t, timespec, timeval};
+use crate::ctype_my::{statx,statx_timestamp,__u32};
 use axerrno::{LinuxError, LinuxResult};
 use axfs::fops::OpenOptions;
 use axio::{PollState, SeekFrom};
 use axsync::Mutex;
+use axfs_vfs::structs::VfsNodeAttrX;
 // use crate::ctypes::{__IncompleteArrayField, time_t};
 use crate::utils::str_to_cstr;
 use crate::{ctypes, utils::char_ptr_to_str};
 pub const UTIME_NOW: c_long = (1 << 30) - 1;
 pub const UTIME_OMIT: c_long = (1 << 30) - 2;
+const AT_EMPTY_PATH: c_int = 0x1000;
 // use crate::time;
 /// File wrapper for `axfs::fops::File`.
 pub struct File {
@@ -89,6 +92,11 @@ impl FileLike for File {
         Ok(attr2stat(metadata))
     }
 
+    fn statx(&self) -> LinuxResult<statx> {
+        let metadata = self.inner.lock().get_attr_x()?;
+        Ok(attr2statx(metadata))
+    }
+    
     fn read_at(&self, _buf: &mut [u8], _offset: u64) -> LinuxResult<usize> {
         self.inner.lock()
           .read_at(_offset,_buf).map_err(LinuxError::from)
@@ -168,7 +176,6 @@ fn attr2stat(metadata: VfsNodeAttr) -> ctypes::stat {
     let ty = metadata.file_type() as u8;
     let perm = metadata.perm().bits() as u32;
     let st_mode = ((ty as u32) << 12) | perm;
-    debug!("!!!!mode is {}", st_mode);
     ctypes::stat {
         st_dev: metadata.dev() as _,
         st_ino: metadata.st_ino() as _,
@@ -191,6 +198,53 @@ fn attr2stat(metadata: VfsNodeAttr) -> ctypes::stat {
             tv_sec: metadata.mtime() as time_t,
             tv_nsec: metadata.mtime_nse() as core::ffi::c_long,
         },
+        ..Default::default()
+    }
+}
+
+fn attr2statx(metadata: VfsNodeAttrX) -> statx {
+    let ty = metadata.file_type() as u8;
+    let perm = metadata.stx_perm().bits() as u32;
+    let stx_mode = ((ty as u32) << 12) | perm;
+    let high: u16 = (stx_mode >> 16) as u16;
+    let low: u16 = (stx_mode & 0xFFFF) as u16;
+    statx {
+        stx_mask: metadata.stx_mask() as _,
+        stx_blksize: metadata.stx_blksize() as _,
+        stx_attributes: metadata.stx_attributes() as _,
+        stx_nlink: metadata.stx_nlink() as _,
+        stx_uid: metadata.stx_uid() as _,
+        stx_gid: metadata.stx_gid() as _,
+        stx_mode: low as _,
+        __spare0:[high] as _,
+        stx_ino: metadata.stx_ino() as _,
+        stx_size: metadata.stx_size() as _,
+        stx_blocks: metadata.stx_blocks() as _,
+        stx_attributes_mask: metadata.stx_attributes_mask() as _,
+        stx_atime: statx_timestamp {
+            tv_sec: metadata.atime() as time_t,
+            tv_nsec: metadata.atime_nse() as __u32,
+            __reserved: 0 as _,
+        },
+        stx_btime: statx_timestamp {
+            tv_sec: metadata.ctime() as time_t,
+            tv_nsec: metadata.ctime_nse()  as __u32,
+            __reserved: 0 as _,
+        },
+        stx_ctime: statx_timestamp {
+            tv_sec: metadata.ctime() as time_t,
+            tv_nsec: metadata.ctime_nse()  as __u32,
+            __reserved: 0 as _,
+        },
+        stx_mtime: statx_timestamp {
+            tv_sec: metadata.mtime() as time_t,
+            tv_nsec: metadata.mtime_nse()  as __u32,
+            __reserved: 0 as _,
+        },
+        stx_rdev_major: metadata.stx_rdev_major() as _,
+        stx_rdev_minor: metadata.stx_rdev_minor() as _,
+        stx_dev_major: metadata.stx_dev_major() as _,
+        stx_dev_minor: metadata.stx_dev_minor() as _,
         ..Default::default()
     }
 }
@@ -515,6 +569,99 @@ pub unsafe fn sys_fstat(fd: c_int, buf: *mut ctypes::stat) -> c_int {
     })
 }
 
+///Get the statx of the file in Loongarch64
+pub unsafe fn sys_statx(
+    dirfd: c_int,
+    pathname_p: *const c_char,
+    flags: c_int,
+    mask: u32,
+    statxbuf: *mut statx,
+) ->LinuxResult<c_int> {
+    let pathname = match char_ptr_to_str(pathname_p) {
+        Ok(s) => s,
+        Err(e) => {
+            debug!("sys_statx: failed to convert pathname: {:?}", e);
+            return Err(e.into()); // 转换为 LinuxError
+        }
+    };
+    debug!(
+        "sys_statx <= {} {pathname_p:p} {:?} {:#o}",
+        dirfd, pathname, flags
+    );
+    if pathname.starts_with('/') {
+        let dir = ROOT_DIR.clone();
+        let file = dir.lookup(pathname)?;
+        //TODO
+        let statx = attr2statx(file.get_attr_x()?);
+        //TODO:check the mask ivalid
+        unsafe { *statxbuf = statx };
+        return Ok(0);
+    }
+    if dirfd == AT_FDCWD as _ {
+        let dir = CURRENT_DIR.lock().clone();
+        let file = match dir.lookup(pathname) {
+            Ok(f) => f,
+            Err(e) => {
+                debug!("sys_statx: lookup failed for {}: {:?}", pathname, e);
+                return Err(e.into()); // 转换为 LinuxError
+            }
+        };
+        let attr = match file.get_attr_x() {
+            Ok(a) => a,
+            Err(e) => {
+                debug!("sys_statx: get_attr failed for {}: {:?}", pathname, e);
+                return Err(e.into()); // 转换为 LinuxError
+            }
+        };
+        let statx = attr2statx(attr);
+        //TODO:check the mask ivalid
+        unsafe { *statxbuf = statx };
+        return Ok(0);
+    }
+
+    if pathname.is_empty() && (flags & AT_EMPTY_PATH as c_int) != 0 {
+        let file_like = get_file_like(dirfd)?;
+        let statx = match file_like.statx() {
+            Ok(s) => s,
+            Err(e) => {
+                debug!("sys_statx: stat failed for dirfd {}: {:?}", dirfd, e);
+                return Err(e.into());
+            }
+        };
+        unsafe { *statxbuf = statx };
+        return Ok(0);
+    }
+    
+    // 处理相对路径
+    let dir: Arc<Directory> = match Directory::from_fd(dirfd) {
+        Ok(d) => d,
+        Err(e) => {
+            debug!("sys_statx: from_fd failed for dirfd {}: {:?}", dirfd, e);
+            return Err(e.into()); // 转换为 LinuxError
+        }
+    };
+    // 获取文件对象，处理 open_file_at 的 Result 返回值
+    let inner_file = match dir.inner.lock().open_file_at(pathname, &flags_to_options(flags, 0)) {
+        Ok(f) => f,
+        Err(e) => {
+            debug!("sys_statx: open_file_at failed for {}: {:?}", pathname, e);
+            return Err(e.into()); // 转换为 LinuxError
+        }
+    };
+    // 使用 inner_file 创建 File 实例，File::new 不返回 Result
+    let file = File::new(inner_file, pathname.into());
+    let statx = match file.statx() {
+        Ok(s) => s,
+        Err(e) => {
+            debug!("sys_statx: stat failed for {}: {:?}", pathname, e);
+            return Err(e.into()); // 转换为 LinuxError
+        }
+    };
+    //TODO:check the mask ivalid
+    unsafe { *statxbuf = statx };
+    Ok(0)
+
+}
 /// Get the metadata of the symbolic link and write into `buf`.
 ///
 /// Return 0 if success.
@@ -720,6 +867,11 @@ impl FileLike for Directory {
         })
     }
 
+    fn statx(&self) -> LinuxResult<statx> {
+        let metadata = self.inner.lock().get_attr_x()?;
+        Ok(attr2statx(metadata))
+    }
+    
     fn into_any(self: Arc<Self>) -> Arc<dyn core::any::Any + Send + Sync> {
         self
     }

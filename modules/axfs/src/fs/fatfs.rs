@@ -1,7 +1,7 @@
 use alloc::sync::Arc;
 use core::cell::UnsafeCell;
 
-use axfs_vfs::{VfsDirEntry, VfsError, VfsNodePerm, VfsResult};
+use axfs_vfs::{VfsDirEntry, VfsError, VfsNodeAttrX, VfsNodePerm, VfsResult};
 use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps};
 use axsync::Mutex;
 use fatfs::{Dir, File, LossyOemCpConverter, NullTimeProvider, Read, Seek, SeekFrom, Write};
@@ -96,6 +96,22 @@ impl<IO: IoTrait> VfsNodeOps for FileWrapper<'static, IO> {
         ))
     }
 
+    fn get_attr_x(&self) -> VfsResult<VfsNodeAttrX> {
+        let size = self.0.lock().seek(SeekFrom::End(0)).map_err(as_vfs_err)?;
+        let blocks = (size + BLOCK_SIZE as u64 - 1) / BLOCK_SIZE as u64;
+        // FAT fs doesn't support permissions, we just set everything to 755
+        let perm = VfsNodePerm::from_bits_truncate(0o755);
+        Ok(VfsNodeAttrX::new(
+            0,0,0,0,0,0,
+            perm,
+            VfsNodeType::File,
+            0,size,
+            blocks,0,
+            0,0,0,0,
+            0,0,0, 0,
+            0,0,0,0,
+        ))
+    }
     fn read_at(&self, offset: u64, buf: &mut [u8]) -> VfsResult<usize> {
         let mut file = self.0.lock();
         file.seek(SeekFrom::Start(offset)).map_err(as_vfs_err)?; // TODO: more efficient
@@ -140,6 +156,18 @@ impl<IO: IoTrait> VfsNodeOps for DirWrapper<'static, IO> {
         ))
     }
 
+    fn get_attr_x(&self) -> VfsResult<VfsNodeAttrX> {
+        Ok(VfsNodeAttrX::new(
+            0, BLOCK_SIZE as u32, 0, 0, 0, 0,
+            VfsNodePerm::from_bits_truncate(0o755),
+            VfsNodeType::Dir,
+            0, 0,
+            1, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+        ))
+    }
     fn parent(&self) -> Option<VfsNodeRef> {
         self.0
             .open_dir("..")

@@ -19,7 +19,7 @@ use axerrno::{AxError, AxResult, ax_err};
 use axfs_devfs::DeviceFileSystem;
 use axfs_procfs::ProcDir;
 use axfs_vfs::path::canonicalize;
-use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps, VfsResult};
+use axfs_vfs::{VfsNodeAttr, VfsNodeAttrX, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps, VfsResult};
 use axio::Read;
 use axns::{ResArc, def_resource};
 use axsync::Mutex;
@@ -172,6 +172,9 @@ impl VfsNodeOps for RootDirectory {
         self.main_fs.root_dir().get_attr()
     }
 
+    fn get_attr_x(&self) -> VfsResult<VfsNodeAttrX> {
+        self.main_fs.root_dir().get_attr_x()
+    }
     fn lookup(self: Arc<Self>, path: &str) -> VfsResult<VfsNodeRef> {
         self.lookup_mounted_fs(path, |fs, rest_path| fs.root_dir().lookup(rest_path))
     }

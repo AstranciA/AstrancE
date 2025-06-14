@@ -7,6 +7,7 @@ use core::{mem, ptr};
 use axerrno::AxError;
 use axfs_vfs::{FileSystemInfo,VfsDirEntry, VfsError, VfsNodePerm, VfsResult};
 use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps};
+use axfs_vfs::structs::{StatxMask, VfsNodeAttrX, STATX_ALL_MASK};
 use axsync::Mutex;
 use lwext4_rust::bindings::{ext4_file, ext4_get_sblock, ext4_getxattr, ext4_inode, ext4_removexattr, ext4_sblock, O_CREAT, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY, SEEK_CUR, SEEK_END, SEEK_SET};
 use lwext4_rust::{Ext4BlockWrapper, Ext4File, InodeTypes, KernelDevOp};
@@ -96,7 +97,7 @@ impl<T: KernelDevOp<DevType = T>> VfsOps for Ext4FileSystem<T> {
         };
         
         if ret == 0 && !sb_ptr.is_null() {
-            unsafe{init_filesystem_info(sb_ptr, fs_info)};
+            unsafe{get_filesystem_info(sb_ptr, fs_info)};
             Ok(0)
         }
         else { 
@@ -105,7 +106,7 @@ impl<T: KernelDevOp<DevType = T>> VfsOps for Ext4FileSystem<T> {
     }
 }
 
-pub unsafe fn init_filesystem_info(sb: *const ext4_sblock, fs_info: *mut FileSystemInfo) -> c_int {
+pub unsafe fn get_filesystem_info(sb: *const ext4_sblock, fs_info: *mut FileSystemInfo) -> c_int {
     if sb.is_null() || fs_info.is_null() {
         return -1; // EINVAL
     }
@@ -274,9 +275,99 @@ impl VfsNodeOps for FileWrapper {
             )
         };
         Ok(attr)
-
     }
+    
+    fn get_attr_x(&self) -> VfsResult<VfsNodeAttrX> {
+        let mut file = self.0.lock();
 
+        let perm = file.file_mode_get().unwrap_or(0o755);
+        let perm = VfsNodePerm::from_bits_truncate((perm as u16) & 0o777);
+
+        let vtype = file.file_type_get();
+        let vtype = match vtype {
+            InodeTypes::EXT4_INODE_MODE_FIFO => VfsNodeType::Fifo,
+            InodeTypes::EXT4_INODE_MODE_CHARDEV => VfsNodeType::CharDevice,
+            InodeTypes::EXT4_INODE_MODE_DIRECTORY => VfsNodeType::Dir,
+            InodeTypes::EXT4_INODE_MODE_BLOCKDEV => VfsNodeType::BlockDevice,
+            InodeTypes::EXT4_INODE_MODE_FILE => VfsNodeType::File,
+            InodeTypes::EXT4_INODE_MODE_SOFTLINK => VfsNodeType::SymLink,
+            InodeTypes::EXT4_INODE_MODE_SOCKET => VfsNodeType::Socket,
+            _ => {
+                warn!("unknown file type: {:?}", vtype);
+                VfsNodeType::File
+            }
+        };
+
+        let size = if vtype == VfsNodeType::File {
+            let path = file.get_path();
+            let path = path.to_str().unwrap();
+            file.file_open(path, O_RDONLY)
+                .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
+            let fsize = file.file_size();
+            let _ = file.file_close();
+            fsize
+        } else {
+            0 // DIR size ?
+        };
+        let blocks = (size + (BLOCK_SIZE as u64 - 1)) / BLOCK_SIZE as u64;
+
+        let inode = file.get_inode().unwrap();
+        info!(
+            "get_attr_x of {:?} {:?}, size: {}, blocks: {}",
+            vtype,
+            file.get_path(),
+            size,
+            blocks,
+        );
+
+        let attr:VfsNodeAttrX = if vtype == VfsNodeType::Dir {
+            VfsNodeAttrX::new(
+                STATX_ALL_MASK.bits(),
+                BLOCK_SIZE as u32,
+                u64::MAX,
+                inode.nlink(),
+                inode.uid(),
+                inode.gid(),
+                perm,
+                vtype,
+                inode.st_ino(),
+                size,
+                blocks,
+                0,
+                0, 0, 0,
+                0, 0, 0,
+                0,0,
+                0,0,
+                0,0,
+            )
+        } else{
+            VfsNodeAttrX::new(
+                STATX_ALL_MASK.bits(),
+                BLOCK_SIZE as u32,
+                u64::MAX,
+                inode.nlink(),
+                inode.uid(),
+                inode.gid(),
+                perm,
+                vtype,
+                inode.st_ino(),
+                size,
+                blocks,
+                0,
+                inode.atime(),
+                inode.btime(),
+                inode.ctime(),
+                inode.mtime(),
+                inode.atime_ex(),
+                inode.btime_ex(),
+                inode.ctime_ex(),
+                inode.mtime_ex(),
+                0,0,
+                0,0,
+            )
+        };
+        Ok(attr)
+    }
     fn set_atime(&self, atime: u32, atime_n: u32) -> VfsResult<usize> {
         let file = self.0.lock();
         file.set_atime(atime, atime_n)

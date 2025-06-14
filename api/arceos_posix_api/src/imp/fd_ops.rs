@@ -5,13 +5,14 @@ use core::ffi::{c_char, c_int, c_short, c_void};
 use core::time::Duration;
 use spin::Mutex;
 use crate::ctypes;
+use crate::ctype_my::statx;
 use crate::imp::stdio::{stdin, stdout};
 use axerrno::{LinuxError, LinuxResult, ax_err};
 use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsResult};
 use axio::PollState;
 use axns::{ResArc, def_resource};
 use flatten_objects::FlattenObjects;
-use spin::{RwLock,Once};
+use spin::{RwLock, Once};
 
 pub const AX_FILE_LIMIT: usize = 1024;
 
@@ -39,6 +40,9 @@ pub trait FileLike: Send + Sync {
     fn read(&self, buf: &mut [u8]) -> LinuxResult<usize>;
     fn write(&self, buf: &[u8]) -> LinuxResult<usize>;
     fn stat(&self) -> LinuxResult<ctypes::stat>;
+    fn statx(&self) ->LinuxResult<statx>{
+       Err(LinuxError::EOPNOTSUPP)
+    }
 
     fn read_at(&self, _buf: &mut [u8], _offset: u64) -> LinuxResult<usize> {
         warn!("read_at not implemented for this FileLike");

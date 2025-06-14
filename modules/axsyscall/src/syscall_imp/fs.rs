@@ -5,7 +5,8 @@ use axfs::api::set_current_dir;
 use axlog::debug;
 use core::ffi::{c_char, c_int, c_long, c_longlong, c_void};
 use axfs_vfs::FileSystemInfo;
-
+// use ctype_my::statx;
+use api::ctype_my::statx;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct test_stat {
@@ -96,6 +97,17 @@ pub unsafe fn sys_fstat(fd: c_int, buf: *mut test_stat) -> SyscallResult {
     result
 }
 
+
+#[inline]
+pub unsafe fn sys_statx(
+    dirfd: c_int,
+    pathname: *const c_char,
+    flags: c_int,
+    mask: u32,
+    statxbuf: *mut statx,
+)->SyscallResult{
+    unsafe{api::sys_statx(dirfd,pathname,flags,mask,statxbuf).map(|r| r as isize)}
+}
 // #[inline]
 // pub unsafe fn sys_fstat(fd: c_int, buf: *mut ctypes::stat) -> SyscallResult {
 //      unsafe { api::sys_fstat(fd,buf) }.to_linux_result()
