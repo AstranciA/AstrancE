@@ -12,7 +12,7 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
-use core::ffi::{c_int, c_void};
+use core::ffi::c_int;
 use arceos_posix_api::{FD_TABLE, ctypes::*};
 use axerrno::{AxError, AxResult, LinuxError, LinuxResult};
 use axfs::{
@@ -24,7 +24,7 @@ use axio::Read;
 use axmm::{AddrSpace, kernel_aspace};
 use axns::AxNamespace;
 use axprocess::Pid;
-use axsignal::{Signal, SignalContext};
+use axsignal::{Signal, SignalContext, SignalSet}; // Import SignalSet
 use axsync::Mutex;
 use axtask::{AxTaskRef, TaskExtRef, WaitQueue, current};
 use memory_addr::VirtAddrRange;
@@ -41,7 +41,7 @@ use crate::{
     utils::get_pwd_from_envs,
 };
 
-use super::{read_trapframe_from_kstack, spawn_user_task, spawn_user_task_inner};
+use super::{read_trapframe_from_kstack, spawn_user_task, spawn_user_task_inner, spawn_signal_ctx}; // Import spawn_signal_ctx
 
 /// Extended data for [`Process`].
 pub struct ProcessData {
@@ -57,9 +57,9 @@ pub struct ProcessData {
     /// The exit signal of the thread
     pub exit_signal: Option<Signal>,
 
-    /// The process signal manager
+    /// The process signal manager (holds signal actions and pending signals)
     pub signal: Arc<Mutex<SignalContext>>,
-    pub signal_stack: Box<[u8; 4096]>,
+    pub signal_stack: Box<[u8; 4096]>, // Process-wide signal stack (can be shared)
 }
 impl ProcessData {
     /// Create a new [`ProcessData`].
@@ -70,11 +70,11 @@ impl ProcessData {
         exit_signal: Option<Signal>,
     ) -> Self {
         let signal_stack = Box::new([0u8; 4096]);
-        let signal__ = signal.clone();
-        let mut signal_ = signal__.lock();
+        let mut signal_ctx = signal.lock();
 
-        signal_.set_current_stack(axsignal::SignalStackType::Primary);
-        signal_.set_stack(
+        // Set the primary signal stack for the process's signal context
+        signal_ctx.set_current_stack(axsignal::SignalStackType::Primary);
+        signal_ctx.set_stack(
             axsignal::SignalStackType::Primary,
             VirtAddrRange::from_start_size((signal_stack.as_ptr() as usize).into(), 4096),
         );
@@ -136,17 +136,17 @@ pub struct ThreadData {
     ///
     /// When the thread exits, the kernel clears the word at this address if it is not NULL.
     pub clear_child_tid: AtomicUsize,
-    // The thread-level signal manager
-    //pub signal: ThreadSignalManager<RawMutex, WaitQueueWrapper>,
+    /// The thread-specific signal mask
+    pub signal_mask: Mutex<SignalSet>, // Add thread-specific signal mask
 }
 
 impl ThreadData {
     /// Create a new [`ThreadData`].
     #[allow(clippy::new_without_default)]
-    pub fn new(proc: &ProcessData) -> Self {
+    pub fn new(/* proc: &ProcessData */) -> Self {
         Self {
             clear_child_tid: AtomicUsize::new(0),
-            //signal: ThreadSignalManager::new(proc.signal.clone()),
+            signal_mask: Mutex::new(SignalSet::empty()), // Initialize with an empty mask
         }
     }
 
@@ -162,93 +162,22 @@ impl ThreadData {
     }
 }
 
-/// From starry-next
-/*
- *pub fn wait_pid(task: AxTaskRef, pid: i32, exit_code_ptr: *mut i32) -> Result<u64, WaitStatus> {
- *    let mut exit_task_id: usize = 0;
- *    let mut answer_id: u64 = 0;
- *    let mut answer_status = WaitStatus::NotExist;
- *
- *    for (index, child) in task.task_ext().children.lock().iter().enumerate() {
- *        //warn!("check child: {}", child.id_name());
- *        if pid <= 0 {
- *            if pid == 0 {
- *                axlog::warn!("Don't support for process group.");
- *            }
- *
- *            answer_status = WaitStatus::Running;
- *            if child.state() == axtask::TaskState::Exited {
- *                let exit_code = child.exit_code();
- *                answer_status = WaitStatus::Exited;
- *                debug!(
- *                    "wait pid _{}_ with code _{}_",
- *                    child.id().as_u64(),
- *                    exit_code
- *                );
- *                exit_task_id = index;
- *                if !exit_code_ptr.is_null() {
- *                    unsafe {
- *                        *exit_code_ptr = exit_code << 8;
- *                    }
- *                }
- *                answer_id = child.id().as_u64();
- *                break;
- *            }
- *        } else if child.id().as_u64() == pid as u64 {
- *            if let Some(exit_code) = child.join() {
- *                answer_status = WaitStatus::Exited;
- *                info!(
- *                    "wait pid _{}_ with code _{:?}_",
- *                    child.id().as_u64(),
- *                    exit_code
- *                );
- *                exit_task_id = index;
- *                if !exit_code_ptr.is_null() {
- *                    unsafe {
- *                        *exit_code_ptr = exit_code << 8;
- *                    }
- *                }
- *                answer_id = child.id().as_u64();
- *            } else {
- *                answer_status = WaitStatus::Running;
- *            }
- *            break;
- *        }
- *    }
- *
- *    if answer_status == WaitStatus::Running {
- *        axtask::yield_now();
- *    }
- *
- *    if answer_status == WaitStatus::Exited {
- *        task.task_ext().children.lock().remove(exit_task_id);
- *        return Ok(answer_id);
- *    }
- *    Err(answer_status)
- *}
- */
-
 /// fork current task
 /// **Return**
 /// - `Ok(new_task_ref)` if fork successfully
 pub fn fork(from_umode: bool) -> LinuxResult<AxTaskRef> {
-    clone_task(
-        None,                  // stack: 不指定新栈指针
-        CloneFlags::empty(),   // flags: 不设置标志位，创建独立进程
-        from_umode,            // from_umode: 调用来自用户态
-        None,                  // ptid: 不需要设置父线程 ID 指针
-        None,                  // ctid: 不需要设置子线程 ID 指针
-        None                   // tls: 不需要设置 TLS 指针
-    )
+    clone_task(None, CloneFlags::empty(), from_umode)
 }
 
 pub fn clone_task(
     stack: Option<usize>,
     flags: CloneFlags,
     from_umode: bool,
-    ptid: Option<*mut i32>,
-    ctid: Option<*mut i32>,
-    tls: Option<*mut c_void>,
+    /*
+     *_ptid: usize,
+     *_tls: usize,
+     *_ctid: usize,
+     */
 ) -> LinuxResult<AxTaskRef> {
     debug!("clone_task with flags: {:?}", flags);
     let curr = current();
@@ -265,17 +194,11 @@ pub fn clone_task(
         trap_frame.step_ip();
     }
 
-    // 设置栈指针
+    // TODO: clone stack since it's always changed.
+    // stack is copied meanwhilst addr space is copied
+    //trap_frame.set_user_sp(stack);
     if let Some(stack) = stack {
         trap_frame.set_user_sp(stack);
-    }
-
-    // 处理 SETTLS 标志位，设置 TLS 指针
-    if flags.contains(CloneFlags::SETTLS) {
-        if let Some(tls_ptr) = tls {
-            // 设置 TLS 指针，在 RISC-V 架构中通过 tp 寄存器设置
-            trap_frame.set_tls(tls_ptr as usize);
-        }
     }
 
     let new_uctx = UspaceContext::from(&trap_frame);
@@ -284,12 +207,14 @@ pub fn clone_task(
     let tid = new_task.id().as_u64() as Pid;
     debug!("new process data");
     let process = if flags.contains(CloneFlags::THREAD) {
+        // If CLONE_THREAD is set, the new task belongs to the same process
         new_task
             .ctx_mut()
             .set_page_table_root(current_aspace.page_table_root());
 
         curr.task_ext().thread.process()
     } else {
+        // If CLONE_THREAD is not set, create a new process
         let parent = if flags.contains(CloneFlags::PARENT) {
             curr.task_ext()
                 .thread
@@ -315,11 +240,11 @@ pub fn clone_task(
             .set_page_table_root(aspace.lock().page_table_root());
 
         let signal = if flags.contains(CloneFlags::SIGHAND) {
-            parent
-                .data::<ProcessData>()
-                .map_or_else(Arc::default, |it| it.signal.clone())
+            // If CLONE_SIGHAND is set, share the signal context
+            curr.task_ext().process_data().signal.clone()
         } else {
-            Arc::default()
+            // Otherwise, create a new signal context
+            spawn_signal_ctx()
         };
         let process_data = ProcessData::new(
             curr.task_ext().process_data().exe_path.read().clone(),
@@ -356,35 +281,26 @@ pub fn clone_task(
         &builder.data(process_data).build()
     };
 
-    let thread_data = ThreadData::new(process.data().unwrap());
-    // 处理 CHILD_CLEARTID 标志位
-    if flags.contains(CloneFlags::CHILD_CLEARTID) {
-        if let Some(ctid_ptr) = ctid {
-            thread_data.set_clear_child_tid(ctid_ptr as usize);
-        }
+    // Create ThreadData for the new thread
+    let mut thread_data = ThreadData::new(/* process.data().unwrap() */);
+    /* TODO: child_tid
+     *if flags.contains(CloneFlags::CHILD_CLEARTID) {
+     *    thread_data.set_clear_child_tid(child_tid);
+     *}
+     */
+
+    // If CLONE_SIGHAND is set, the new thread inherits the signal mask of the calling thread.
+    // Otherwise, the new thread's signal mask is empty.
+    if flags.contains(CloneFlags::SIGHAND) {
+        let current_thread_sigmask = curr.task_ext().thread_data().signal_mask.lock();
+        *thread_data.signal_mask.lock() = *current_thread_sigmask;
     }
 
-    // 处理 PARENT_SETTID 标志位
-    if flags.contains(CloneFlags::PARENT_SETTID) {
-        if let Some(ptid_ptr) = ptid {
-            unsafe {
-                *ptid_ptr = tid as i32;
-            }
-        }
-    }
-
-    // 处理 CHILD_SETTID 标志位
-    if flags.contains(CloneFlags::CHILD_SETTID) {
-        if let Some(ctid_ptr) = ctid {
-            unsafe {
-                *ctid_ptr = tid as i32;
-            }
-        }
-    }
 
     let thread = process.new_thread(tid).data(thread_data).build();
     add_thread_to_table(&thread);
-    new_task.init_task_ext(TaskExt::new(thread));
+    // TODO: Pass pthread_ptr and tls_area when creating TaskExt for cloned tasks/threads
+    new_task.init_task_ext(TaskExt::new(thread, 0, None)); // Placeholder for pthread_ptr and tls_area
     Ok(axtask::spawn_task(new_task))
 }
 
@@ -430,7 +346,7 @@ pub fn exec_current(program_name: &str, args: &[String], envs: &[String]) -> AxR
         ExecType::Shell => {
             program_path = "/usr/bin/busybox".to_string();
             args_.push(program_path.clone());
-            args_.push("sh".to_string());
+            args_.push("ash".to_string());
             load_elf_from_disk(program_path.as_str()).unwrap()
         }
         _ => {
@@ -442,11 +358,14 @@ pub fn exec_current(program_name: &str, args: &[String], envs: &[String]) -> AxR
     let args_: &[String] = args_.as_slice();
     let current_task = current();
 
-    // 检查地址空间是否被多个任务共享
-    if Arc::strong_count(&current_task.task_ext().process_data().aspace) != 1 {
-        warn!("Address space is shared by multiple tasks, exec is not supported.");
-        return Err(AxError::Unsupported);
+    // Check if the address space is shared by multiple tasks (threads)
+    // execve replaces the current process image, so it's only allowed if
+    // the calling thread is the only thread in the process.
+    if current_task.task_ext().thread.process().thread_count() > 1 {
+        warn!("Process has multiple threads, exec is not supported.");
+        return Err(LinuxError::EAGAIN.into()); // Or another appropriate error
     }
+
 
     // 释放旧的用户地址空间映射
     let mut aspace = current_task.task_ext().process_data().aspace.lock();
@@ -461,7 +380,17 @@ pub fn exec_current(program_name: &str, args: &[String], envs: &[String]) -> AxR
 
     unsafe { current_task.task_ext().process_data().aspace.force_unlock() };
 
-    // 设置当前任务名称和目录
+    // Reset signal handlers to default and clear pending signals for the process
+    let mut process_sigctx = current_task.task_ext().process_data().signal.lock();
+    process_sigctx.reset(); // Use the reset method
+
+
+    // Reset thread-specific signal mask to empty
+    let mut thread_sigmask = current_task.task_ext().thread_data().signal_mask.lock();
+    *thread_sigmask = SignalSet::empty();
+
+
+    // Set current task name and directory
     current_task.set_name(&program_path);
     if let Some(pwd) = pwd {
         set_current_dir(pwd.as_str())?;
@@ -472,7 +401,7 @@ pub fn exec_current(program_name: &str, args: &[String], envs: &[String]) -> AxR
         entry_point, user_stack_base,
     );
 
-    // 设置用户上下文并进入用户空间
+    // Set up user context and enter user space
     let mut uctx = UspaceContext::new(entry_point.as_usize(), user_stack_base, 0);
     if let Some(tp) = thread_pointer {
         uctx.set_tp(tp.as_usize());

@@ -43,9 +43,9 @@ syscall_handler_def!(
                 if stack != 0 { Some(stack) } else { None },
                 clone_flags,
                 true, // 表示用户态线程
-                if ptid != 0 { Some(ptid as *mut i32) } else { None }, // 父线程 ID 指针
-                if ctid != 0 { Some(ctid as *mut i32) } else { None }, // 子线程 ID 指针
-                if tls != 0 { Some(tls as *mut c_void) } else { None }, // TLS 指针
+                // if ptid != 0 { Some(ptid as *mut i32) } else { None }, // 父线程 ID 指针
+                // if ctid != 0 { Some(ctid as *mut i32) } else { None }, // 子线程 ID 指针
+                // if tls != 0 { Some(tls as *mut c_void) } else { None }, // TLS 指针
             )?;
             
             // 返回新任务的进程 ID

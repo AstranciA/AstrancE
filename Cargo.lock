@@ -706,6 +706,7 @@ dependencies = [
  "axconfig",
  "axerrno",
  "axhal",
+ "axprocess",
  "axtask",
  "cfg-if",
  "cpumask",
