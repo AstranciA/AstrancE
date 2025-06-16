@@ -1,25 +1,11 @@
 #![feature(naked_functions)]
 #![no_std]
 #[macro_use]
-extern crate axlog;
-#[macro_use]
-extern crate alloc;
-#[macro_use]
 extern crate bitflags;
+#[macro_use]
+extern crate axlog;
 
-use core::fmt::Debug;
-use core::clone::Clone;
-use core::marker::Copy;
-use core::cmp::{PartialEq, Eq};
-// 如果需要 PartialOrd, Ord, Hash
-use core::cmp::{PartialOrd, Ord};
-use core::hash::Hash;
-
-use core::panic;
-use core::assert_eq;
-use core::arch::naked_asm; // 如果使用了 naked_asm!
-
-
+extern crate alloc;
 
 #[cfg(feature = "default_handler")]
 mod default;
@@ -27,6 +13,7 @@ mod default;
 pub use default::*;
 
 use core::{
+    arch::naked_asm,
     error,
     ffi::{c_int, c_void},
     fmt,
@@ -98,17 +85,13 @@ impl Signal {
             Some(unsafe { core::mem::transmute(n as usize) })
         }
     }
-
-    pub fn is_valid(&self) -> bool {
-        *self != Signal::NONE && *self as usize <= NSIG
-    }
 }
 
 impl TryFrom<c_int> for Signal {
     type Error = SignalError;
 
     fn try_from(value: c_int) -> Result<Self, Self::Error> {
-        if value <= 0 || value as usize > NSIG {
+        if value < 0 || value as usize > NSIG {
             Err(SignalError::InvalidSignal)
         } else {
             Ok(unsafe { core::mem::transmute(value as usize) })
@@ -134,7 +117,7 @@ impl Default for Signal {
  */
 
 bitflags! {
-    #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+    #[derive(Clone, Copy, Default, Debug)]
     pub struct SignalSet :u64 {
         const SIGHUP     = 1 << (SIGHUP - 1);
         const SIGINT     = 1 << (SIGINT - 1);
@@ -155,21 +138,21 @@ bitflags! {
         const SIGSTKFLT  = 1 << (SIGSTKFLT - 1);
         const SIGCHLD    = 1 << (SIGCHLD - 1);
         const SIGCONT    = 1 << (SIGCONT - 1);
-        const SIGSTOP    = SIGSTOP as u64; // Use raw value for non-catchable signals
-        const SIGTSTP    = SIGTSTP as u64;
-        const SIGTTIN    = SIGTTIN as u64;
-        const SIGTTOU    = SIGTTOU as u64;
-        const SIGURG     = SIGURG as u64;
-        const SIGXCPU    = SIGXCPU as u64;
-        const SIGXFSZ    = SIGXFSZ as u64;
-        const SIGVTALRM  = SIGVTALRM as u64;
-        const SIGPROF    = SIGPROF as u64;
-        const SIGWINCH   = SIGWINCH as u64;
-        const SIGIO      = SIGIO as u64;
-        const SIGPOLL    = SIGPOLL as u64;
-        const SIGPWR     = SIGPWR as u64;
-        const SIGSYS     = SIGSYS as u64;
-        const SIGUNUSED  = SIGUNUSED  as u64;
+        const SIGSTOP    = 1 << (SIGSTOP - 1);
+        const SIGTSTP    = 1 << (SIGTSTP - 1);
+        const SIGTTIN    = 1 << (SIGTTIN - 1);
+        const SIGTTOU    = 1 << (SIGTTOU - 1);
+        const SIGURG     = 1 << (SIGURG - 1);
+        const SIGXCPU    = 1 << (SIGXCPU - 1);
+        const SIGXFSZ    = 1 << (SIGXFSZ - 1);
+        const SIGVTALRM  = 1 << (SIGVTALRM - 1);
+        const SIGPROF    = 1 << (SIGPROF - 1);
+        const SIGWINCH   = 1 << (SIGWINCH - 1);
+        const SIGIO      = 1 << (SIGIO - 1);
+        const SIGPOLL    = 1 << (SIGPOLL - 1);
+        const SIGPWR     = 1 << (SIGPWR - 1);
+        const SIGSYS     = 1 << (SIGSYS - 1);
+        const SIGUNUSED  = 1 << (SIGUNUSED  - 1);
     }
 }
 
@@ -177,17 +160,13 @@ impl SignalSet {
     /// get lowest signal in the set
     /// will return None if the set is empty (trailing_zeros == NSIG)
     pub fn get_one(&self) -> Option<Signal> {
-        if self.bits() == 0 {
-            None
-        } else {
-            Signal::from_u32(self.bits().trailing_zeros() + 1)
-        }
+        Signal::from_u32(self.bits().trailing_zeros() + 1)
     }
 
     /// get lowest signal in the set that is in the filter set
     /// will return None if no signal in the set is in the filter set
     pub fn get_one_in(&self, filter: SignalSet) -> Option<Signal> {
-        self.intersection(filter).get_one()
+        Signal::from_u32(self.intersection(filter).bits().trailing_zeros() + 1)
     }
 
     /// take the lowest signal in the set and remove it from the set
@@ -208,11 +187,6 @@ impl SignalSet {
         } else {
             None
         }
-    }
-
-    /// Check if there is any signal in the set that is also in the filter set
-    pub fn has_pending_in(&self, filter: SignalSet) -> bool {
-        !self.intersection(filter).is_empty()
     }
 }
 
@@ -418,12 +392,11 @@ pub unsafe extern "C" fn sigreturn_trampoline() {
 }
 
 // 进程信号上下文
-// #[derive(Clone)] // Remove Clone derive
 pub struct SignalContext {
     stack: SignalFrameManager,
     actions: [SigAction; NSIG], // 信号处理表
-    // blocked: SignalSet,         // 被阻塞的信号 (This is now thread-specific)
-    pending: SignalSet,         // 待处理信号 (This remains process-wide)
+    blocked: SignalSet,         // 被阻塞的信号
+    pending: SignalSet,         // 待处理信号
 }
 
 impl Default for SignalContext {
@@ -431,7 +404,7 @@ impl Default for SignalContext {
         let mut default = Self {
             stack: Default::default(),
             actions: [Default::default(); NSIG],
-            // blocked: Default::default(), // Initialize as empty, thread will manage its own
+            blocked: Default::default(),
             pending: Default::default(),
         };
         #[cfg(feature = "default_handler")]
@@ -445,25 +418,20 @@ impl Default for SignalContext {
 impl SignalContext {
     /// 向进程发送信号
     pub fn send_signal(&mut self, sig: SignalSet) {
-        // Add signal to the process's pending set
+        // 如果信号未被阻塞，则加入待处理队列
         trace!(
-            "send signal: {:?}, pending: {:?}",
-            sig, self.pending
+            "send signal: {:?}, pending: {:?}, blocked: {:?}",
+            sig, self.pending, self.blocked
         );
-        self.pending = self.pending.union(sig);
-        // TODO: Wake up a thread in the process that can handle this signal
+        if self.blocked.intersection(sig).is_empty() {
+            self.pending = self.pending.union(sig);
+        }
     }
 
-    /// Check if there are any pending signals that are not blocked by the given mask
-    pub fn has_pending_in(&self, mask: SignalSet) -> bool {
-        !self.pending.intersection(SignalSet::all().difference(mask)).is_empty()
+    /// 检查是否有待处理信号
+    pub fn has_pending(&self) -> bool {
+        !self.pending.is_empty()
     }
-
-    /// Take the lowest pending signal that is not blocked by the given mask
-    pub fn take_pending_in(&mut self, mask: SignalSet) -> Option<Signal> {
-        self.pending.take_one_in(SignalSet::all().difference(mask))
-    }
-
 
     /// 获取信号处理动作，返回之前的动作
     pub fn get_action(&mut self, sig: Signal) -> &SigAction {
@@ -489,10 +457,12 @@ impl SignalContext {
         self.stack.set_stack(ty, range);
     }
 
-    // These functions are no longer needed in SignalContext as blocked mask is thread-specific
-    /*
     pub fn get_blocked(&self) -> SignalSet {
         self.blocked
+    }
+
+    pub fn take_pending_in(&mut self, filter: SignalSet) -> Option<Signal> {
+        self.pending.take_one_in(filter)
     }
 
     pub fn block(&mut self, mask: SignalSet) -> SignalSet {
@@ -512,10 +482,8 @@ impl SignalContext {
         self.blocked = mask;
         old
     }
-    */
 
-
-    /// 加载当前信号栈帧，返回之前的scratch
+    /// 加载当前信号栈帧，返回之前的sscratch
     /// 用户不能手动调用
     fn load(&mut self, scratch: usize, data: SignalFrameData) -> SignalResult<usize> {
         let curr_frame = self.current_frame()?;
@@ -523,28 +491,22 @@ impl SignalContext {
         Ok(curr_frame.scratch(scratch))
     }
 
-    /// 释放当前的信号处理帧，返回处理函数和原scratch(原陷入栈)，必须和load成对
+    /// 释放当前信号栈帧，恢复blocked，返回原scratch(原陷入栈)，必须和load成对
     /// 用户需要在sigreturn中手动调用
-    pub fn unload(&mut self) -> SignalResult<(SignalFrameData, usize)> {
+    pub fn unload(&mut self) -> SignalResult<(usize, TrapFrame)> {
         let curr_frame = self.current_frame()?;
         let (
             SignalFrameData {
                 signal,
-                uc_sigmask, // This is the thread's signal mask before the handler
+                uc_sigmask,
                 orig_frame,
                 ..
             },
             trap_frame,
         ) = curr_frame.unload()?;
-        // The process's pending signal set should be updated here if the signal was handled
+        self.blocked = uc_sigmask;
         self.pending.remove(signal.into());
-        // The thread's signal mask will be restored by the caller (axmono)
-        Ok((SignalFrameData { signal, uc_sigmask, orig_frame, sigmask: SignalSet::empty(), flags: SigFlags::empty() }, trap_frame))
-    }
-
-    /// Resets the signal context to its default state.
-    pub fn reset(&mut self) {
-        *self = Self::default();
+        Ok((trap_frame, orig_frame))
     }
 }
 
@@ -584,13 +546,13 @@ pub enum SignalStackType {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SignalFrameData {
     pub signal: Signal,
-    pub uc_sigmask: SignalSet, // Thread's signal mask before handler
-    pub sigmask: SignalSet, // Signal mask to be set during handler (action.mask | old_mask)
+    pub uc_sigmask: SignalSet,
+    pub sigmask: SignalSet,
     pub flags: SigFlags,
     pub orig_frame: TrapFrame,
 }
 
-#[derive(Debug)] // Add Clone derive
+#[derive(Debug)]
 pub struct SignalFrame {
     loaded: AtomicBool,
     range: VirtAddrRange,
@@ -645,7 +607,7 @@ impl Default for SignalFrame {
         Self {
             loaded: AtomicBool::new(false),
             range: Default::default(),
-            scratch: AtomicUsize::new(0),
+            scratch: Default::default(),
             data: Default::default(),
         }
     }
@@ -695,19 +657,16 @@ impl SignalFrameManager {
 }
 
 /// 处理信号，需要提前设置信号栈
-/// This function is called from axmono's trap handler.
-/// It checks for pending signals in the process's pending set that are not blocked by the thread's mask.
-/// If a signal is found, it prepares the signal frame and returns the context to enter the signal handler.
 pub fn handle_pending_signals(
-    process_sigctx: &mut SignalContext, // Process's signal context
-    thread_sigmask: &mut SignalSet, // Thread's signal mask
-    thread_tf: &TrapFrame, // Current thread's trap frame
-    trampoline: VirtAddr, // Address of the sigreturn trampoline
+    sigctx: &mut SignalContext,
+    thread_tf: &TrapFrame,
+    trampoline: VirtAddr,
 ) -> SignalResult<Option<(UspaceContext, VirtAddr)>> {
-    // Find the highest priority pending signal that is not blocked by the thread's mask
-    while let Some(sig) = process_sigctx.pending.take_one_in(SignalSet::all().difference(*thread_sigmask)) {
+    while let Some(sig) = sigctx.pending.take_one() {
+        // 找到最高优先级的待处理信号
         debug!("handle signal: {sig:?}");
-        let action = *process_sigctx.get_action(sig);
+        let old_mask = (*sigctx).blocked;
+        let action = *sigctx.get_action(sig);
         let SigAction {
             handler,
             mask: act_mask,
@@ -716,50 +675,65 @@ pub fn handle_pending_signals(
         warn!("handler: {handler:?}, action_mask: {act_mask:?}, flags: {flags:?}");
 
         match handler {
-            SigHandler::Default(f) => f(sig, process_sigctx),
-            SigHandler::Ignore => {} // Directly ignore
-            SigHandler::Handler(handler_addr) | SigHandler::Action(handler_addr) => {
-                // Set up the signal handling stack frame
-                // The new blocked mask for the signal handler is the union of the old mask and action.mask
-                let new_blocked_mask = thread_sigmask.union(act_mask);
-
-                // Save the current thread's signal mask in the signal frame data
-                let old_thread_mask = *thread_sigmask;
-                *thread_sigmask = new_blocked_mask; // Set the new blocked mask for the thread
-
-                process_sigctx.set_current_stack(SignalStackType::Primary); // Assuming primary stack for now
-
+            SigHandler::Default(f) => f(sig, &mut *sigctx),
+            SigHandler::Ignore => {} // 直接忽略
+            SigHandler::Handler(handler) => {
+                // 设置信号处理栈帧
+                let mask = old_mask.union(act_mask);
+                (*sigctx).blocked = mask;
                 assert_eq!(
-                    process_sigctx.load(unsafe { axhal::arch::read_trap_frame() }, SignalFrameData {
+                    sigctx.load(unsafe { axhal::arch::read_trap_frame() }, SignalFrameData {
                         signal: sig,
-                        uc_sigmask: old_thread_mask, // Save the thread's mask before handler
-                        sigmask: new_blocked_mask, // This field is not used in unload, but kept for context
+                        uc_sigmask: old_mask,
+                        sigmask: mask,
                         flags: flags,
-                        orig_frame: *thread_tf, // Save the original trap frame
+                        orig_frame: *thread_tf,
                     })?,
                     0,
                     "signal stack scratch is not empty"
                 );
-
-                let current_frame: &mut SignalFrame = process_sigctx.current_frame()?;
+                let current_frame: &mut SignalFrame = sigctx.current_frame()?;
                 let kstack_top = current_frame.ptr();
-
-                // Prepare user space context to jump to the signal handler
+                // 在syscall rt_sigreturn中清除信号。
                 let mut uctx =
-                    UspaceContext::new(handler_addr as usize, thread_tf.get_sp().into(), sig as usize);
-                // Copy general purpose registers and thread pointer
+                    UspaceContext::new(handler as usize, thread_tf.get_sp().into(), sig as usize);
                 uctx.0.regs.tp = thread_tf.regs.tp;
                 uctx.0.regs.gp = thread_tf.regs.gp;
-                // Set return address to the sigreturn trampoline
+                // 设置返回地址为信号返回trampoline
+                uctx.0.set_ra(trampoline.as_usize());
+
+                return Ok(Some((uctx, kstack_top)));
+            }
+            SigHandler::Action(handler) => {
+                // 设置信号处理栈帧
+                let mask = old_mask.union(act_mask);
+                (*sigctx).blocked = mask;
+                assert_eq!(
+                    sigctx.load(unsafe { axhal::arch::read_trap_frame() }, SignalFrameData {
+                        signal: sig,
+                        uc_sigmask: old_mask,
+                        sigmask: mask,
+                        flags: flags,
+                        orig_frame: *thread_tf,
+                    })?,
+                    0,
+                    "signal stack scratch is not empty"
+                );
+                let current_frame: &mut SignalFrame = sigctx.current_frame()?;
+                let kstack_top = current_frame.ptr();
+                // 在syscall rt_sigreturn中清除信号。
+                let mut uctx =
+                    UspaceContext::new(handler as usize, thread_tf.get_sp().into(), sig as usize);
+                uctx.0.regs.tp = thread_tf.regs.tp;
+                uctx.0.regs.gp = thread_tf.regs.gp;
+                // 设置返回地址为信号返回trampoline
                 uctx.0.set_ra(trampoline.as_usize());
 
                 return Ok(Some((uctx, kstack_top)));
             }
         };
 
-        // If the signal was ignored or handled by default, restore the thread's signal mask
-        // (although in these cases, the mask wasn't changed).
-        // *thread_sigmask = old_mask; // This line is not needed here
+        sigctx.blocked = old_mask;
     }
     Ok(None)
 }

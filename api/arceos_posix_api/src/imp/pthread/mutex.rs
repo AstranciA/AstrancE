@@ -42,12 +42,6 @@ pub fn sys_pthread_mutex_init(
     debug!("sys_pthread_mutex_init <= {:#x}", mutex as usize);
     syscall_body!(sys_pthread_mutex_init, {
         check_null_mut_ptr(mutex)?;
-        // Ensure the size and alignment match
-        if size_of::<ctypes::pthread_mutex_t>() != size_of::<PthreadMutex>() ||
-           core::mem::align_of::<ctypes::pthread_mutex_t>() != core::mem::align_of::<PthreadMutex>() {
-            error!("pthread_mutex_t size or alignment mismatch!");
-            return Err(LinuxError::EINVAL); // Or a more appropriate error
-        }
         unsafe {
             mutex.cast::<PthreadMutex>().write(PthreadMutex::new());
         }
@@ -60,12 +54,6 @@ pub fn sys_pthread_mutex_lock(mutex: *mut ctypes::pthread_mutex_t) -> c_int {
     debug!("sys_pthread_mutex_lock <= {:#x}", mutex as usize);
     syscall_body!(sys_pthread_mutex_lock, {
         check_null_mut_ptr(mutex)?;
-        // Ensure the size and alignment match
-        if size_of::<ctypes::pthread_mutex_t>() != size_of::<PthreadMutex>() ||
-           core::mem::align_of::<ctypes::pthread_mutex_t>() != core::mem::align_of::<PthreadMutex>() {
-            error!("pthread_mutex_t size or alignment mismatch!");
-            return Err(LinuxError::EINVAL); // Or a more appropriate error
-        }
         unsafe {
             (*mutex.cast::<PthreadMutex>()).lock()?;
         }
@@ -78,12 +66,6 @@ pub fn sys_pthread_mutex_unlock(mutex: *mut ctypes::pthread_mutex_t) -> c_int {
     debug!("sys_pthread_mutex_unlock <= {:#x}", mutex as usize);
     syscall_body!(sys_pthread_mutex_unlock, {
         check_null_mut_ptr(mutex)?;
-        // Ensure the size and alignment match
-        if size_of::<ctypes::pthread_mutex_t>() != size_of::<PthreadMutex>() ||
-           core::mem::align_of::<ctypes::pthread_mutex_t>() != core::mem::align_of::<PthreadMutex>() {
-            error!("pthread_mutex_t size or alignment mismatch!");
-            return Err(LinuxError::EINVAL); // Or a more appropriate error
-        }
         unsafe {
             (*mutex.cast::<PthreadMutex>()).unlock()?;
         }

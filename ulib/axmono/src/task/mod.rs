@@ -46,31 +46,28 @@ pub use wait::sys_waitpid;
 pub mod exit;
 pub use exit::sys_exit;
 
-/// Represents the Thread Local Storage (TLS) area for a thread.
-pub struct TlsArea {
-    base: VirtAddr,
-    size: usize,
-    // Add any other necessary TLS-related information
-}
-
 /// Task extended data for the monolithic kernel.
 pub struct TaskExt {
     pub time: RefCell<time::TimeStat>,
     pub thread: Arc<Thread>,
-    // Pointer to the user-space pthread struct (managed by arceos_posix_api)
-    pub pthread_ptr: usize,
-    // Thread Local Storage (TLS) area
-    pub tls_area: Option<TlsArea>,
 }
 
 #[allow(unused)]
 impl TaskExt {
-    pub fn new(thread: Arc<Thread>, pthread_ptr: usize, tls_area: Option<TlsArea>) -> Self {
+    pub fn new(thread: Arc<Thread>) -> Self {
         Self {
+            /*
+             *proc_id,
+             *parent_id: AtomicU64::new(1),
+             *children: Mutex::new(Vec::new()),
+             *uctx,
+             *clear_child_tid: AtomicU64::new(0),
+             *aspace,
+             *ns: AxNamespace::new_thread_local(false),
+             *time: TimeStat::new().into(),
+             */
             time: RefCell::new(TimeStat::new()),
             thread,
-            pthread_ptr,
-            tls_area,
         }
     }
 
@@ -166,25 +163,37 @@ pub fn spawn_user_task(
     uctx: UspaceContext,
     pwd: String,
     parent: Option<Arc<Process>>,
-    pthread_ptr: usize, // Add pthread_ptr parameter
-    tls_area: Option<TlsArea>, // Add tls_area parameter
 ) -> AxTaskRef {
     let mut task = spawn_user_task_inner(exe_path, uctx, pwd);
     task.ctx_mut()
         .set_page_table_root(aspace.lock().page_table_root());
     let tid = task.id().as_u64() as Pid;
 
+    //let aspace_ = aspace.lock();
+    //aspace_.map_alloc(size, flags, populate);
+    //let sigctx = SignalContext::default();
+    //sigctx.set_stack(SignalStackType::Primary, range);
+
+    /*
+     *let process_data = ProcessData {
+     *    exe_path: RwLock::new(exe_path.into()),
+     *    aspace,
+     *    ns: AxNamespace::new_thread_local(),
+     *    child_exit_wq: WaitQueue::new(),
+     *    exit_signal: None,
+     *    signal: Arc::new(Mutex::new(SignalContext::default())),
+     *};
+     */
     let process_data = ProcessData::new(exe_path.into(), aspace, spawn_signal_ctx(), None);
     let parent = parent.unwrap_or(init_proc());
     let process = parent.fork(tid).data(process_data).build();
 
     let thread_data = ThreadData {
         clear_child_tid: AtomicUsize::new(0),
-        signal_mask: Mutex::new(axsignal::SignalSet::empty()), // Add thread-specific signal mask
     };
     let thread = process.new_thread(tid).data(thread_data).build();
 
-    task.init_task_ext(TaskExt::new(thread, pthread_ptr, tls_area)); // Pass pthread_ptr and tls_area
+    task.init_task_ext(TaskExt::new(thread));
 
     task.task_ext().process_data().ns_init_new();
     task.into_arc()
@@ -208,10 +217,10 @@ pub fn read_trapframe_from_kstack(kstack_top: usize) -> TrapFrame {
     unsafe { *trap_frame_ptr }
 }
 
-pub(crate) static THREAD_TABLE: RwLock<WeakMap<Pid, Weak<Thread>>> = RwLock::new(WeakMap::new());
-pub(crate) static PROCESS_TABLE: RwLock<WeakMap<Pid, Weak<Process>>> = RwLock::new(WeakMap::new());
-pub(crate) static PROCESS_GROUP_TABLE: RwLock<WeakMap<Pid, Weak<ProcessGroup>>> = RwLock::new(WeakMap::new());
-pub(crate) static SESSION_TABLE: RwLock<RwLock<WeakMap<Pid, Weak<Session>>>> = RwLock::new(RwLock::new(WeakMap::new()));
+static THREAD_TABLE: RwLock<WeakMap<Pid, Weak<Thread>>> = RwLock::new(WeakMap::new());
+static PROCESS_TABLE: RwLock<WeakMap<Pid, Weak<Process>>> = RwLock::new(WeakMap::new());
+static PROCESS_GROUP_TABLE: RwLock<WeakMap<Pid, Weak<ProcessGroup>>> = RwLock::new(WeakMap::new());
+static SESSION_TABLE: RwLock<WeakMap<Pid, Weak<Session>>> = RwLock::new(WeakMap::new());
 
 /// Add the thread and possibly its process, process group and session to the
 /// corresponding tables.
@@ -235,10 +244,10 @@ pub fn add_thread_to_table(thread: &Arc<Thread>) {
 
     let mut session_table = SESSION_TABLE.write();
     let session = process_group.session();
-    if session_table.read().contains_key(&session.sid()) {
+    if session_table.contains_key(&session.sid()) {
         return;
     }
-    session_table.write().insert(session.sid(), &session);
+    session_table.insert(session.sid(), &session);
 }
 
 /// Lists all processes.
@@ -263,7 +272,7 @@ pub fn get_process_group(pgid: Pid) -> LinuxResult<Arc<ProcessGroup>> {
 }
 /// Finds the session with the given SID.
 pub fn get_session(sid: Pid) -> LinuxResult<Arc<Session>> {
-    SESSION_TABLE.read().read().get(&sid).ok_or(LinuxError::ESRCH)
+    SESSION_TABLE.read().get(&sid).ok_or(LinuxError::ESRCH)
 }
 
 /// Update the time statistics to reflect a switch from kernel mode to user mode.
