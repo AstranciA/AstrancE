@@ -44,6 +44,8 @@ pub use process::*;
 pub mod wait;
 pub use wait::sys_waitpid;
 pub mod exit;
+mod pthread;
+
 pub use exit::sys_exit;
 
 /// Task extended data for the monolithic kernel.

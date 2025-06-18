@@ -34,23 +34,22 @@ syscall_handler_def!(
         exit_group => [code,..]{
             task::exit::sys_exit_group((code & 0xff) as i32)
         }
-        clone => [flags, stack, ptid, ctid, tls, ..] {
-            let clone_flags = CloneFlags::from_bits_retain(flags as u32);
-            warn!("clone(flags={:#x}, stack={:#x}, ptid={:#x}, ctid={:#x}, tls={:#x})", flags, stack, ptid, ctid, tls);
-            
-            // 调用任务克隆函数，传递所有必要参数
-            let child_task = task::clone_task(
-                if stack != 0 { Some(stack) } else { None },
-                clone_flags,
-                true, // 表示用户态线程
-                if ptid != 0 { Some(ptid as *mut i32) } else { None }, // 父线程 ID 指针
-                if ctid != 0 { Some(ctid as *mut i32) } else { None }, // 子线程 ID 指针
-                if tls != 0 { Some(tls as *mut c_void) } else { None }, // TLS 指针
-            )?;
-            
-            // 返回新任务的进程 ID
-            Ok(child_task.task_ext().thread.process().pid() as isize)
+         clone => [flags, stack, ptid, ctid, tls, ..] {
+        let clone_flags = CloneFlags::from_bits_retain(flags as u32);
+        warn!("clone(flags={:#x}, stack={:#x}, ptid={:#x}, ctid={:#x}, tls={:#x})", flags, stack, ptid, ctid, tls);
+        // 调用任务克隆函数，传递所有必要参数
+        let child_task = task::clone_task(
+            if stack != 0 { Some(stack) } else { None },
+            clone_flags,
+            true, // 表示用户态线程
+            if ptid != 0 { Some(ptid as *mut i32) } else { None }, // 父线程 ID 指针
+            if ctid != 0 { Some(ctid as *mut i32) } else { None }, // 子线程 ID 指针
+            if tls != 0 { Some(tls as *mut c_void) } else { None }, // TLS 指针
+        )?;
+        // 返回新任务的进程 ID (对于线程，返回线程 ID，即 TaskId)
+        Ok(child_task.id().as_u64() as isize)
         }
+
 
         wait4 => [pid, wstatus, options, reusage, ..] {
             let curr = current();

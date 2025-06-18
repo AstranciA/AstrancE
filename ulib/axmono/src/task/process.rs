@@ -242,6 +242,7 @@ pub fn fork(from_umode: bool) -> LinuxResult<AxTaskRef> {
     )
 }
 
+
 pub fn clone_task(
     stack: Option<usize>,
     flags: CloneFlags,
@@ -252,15 +253,17 @@ pub fn clone_task(
 ) -> LinuxResult<AxTaskRef> {
     debug!("clone_task with flags: {:?}", flags);
     let curr = current();
-    let current_task_ext = curr.task_ext();
+    let curr_ext = curr.task_ext();
     const FLAG_MASK: u32 = 0xff;
     let exit_signal = Signal::from_u32(flags.bits() & FLAG_MASK);
+
     // new task with same ip and sp of current task
     let mut trap_frame = read_trapframe_from_kstack(curr.get_kernel_stack_top().unwrap());
 
-    let mut current_aspace = current_task_ext.process_data().aspace.lock();
+    let mut current_aspace = curr_ext.process_data().aspace.lock();
 
     if from_umode {
+        // 对于从用户态调用的 clone，返回值为新进程/线程的 ID
         trap_frame.set_ret_code(0);
         trap_frame.step_ip();
     }
@@ -283,25 +286,51 @@ pub fn clone_task(
     let mut new_task = spawn_user_task_inner(curr.name(), new_uctx, current_pwd);
     let tid = new_task.id().as_u64() as Pid;
     debug!("new process data");
+
     let process = if flags.contains(CloneFlags::THREAD) {
+        // 如果是创建线程，共享进程资源
         new_task
             .ctx_mut()
             .set_page_table_root(current_aspace.page_table_root());
 
-        curr.task_ext().thread.process()
+        // 获取当前进程的命名空间
+        let current_ns = &curr_ext.process_data().ns;
+
+        // 共享文件描述符表、信号处理表、文件系统信息等
+        if flags.contains(CloneFlags::FILES) {
+            FD_TABLE
+                .deref_from(&current_ns) // 使用当前进程的命名空间
+                .init_shared(FD_TABLE.share());
+        }
+        if flags.contains(CloneFlags::SIGHAND) {
+            SIGNAL_HANDLER
+                .deref_from(&current_ns) // 使用当前进程的命名空间
+                .init_shared(SIGNAL_HANDLER.share());
+        }
+        if flags.contains(CloneFlags::FS) {
+            CURRENT_DIR
+                .deref_from(&current_ns) // 使用当前进程的命名空间
+                .init_shared(CURRENT_DIR.share());
+            CURRENT_DIR_PATH
+                .deref_from(&current_ns) // 使用当前进程的命名空间
+                .init_shared(CURRENT_DIR_PATH.share());
+        }
+
+        curr_ext.thread.process()
     } else {
+        // 如果是创建进程，复制进程资源
         let parent = if flags.contains(CloneFlags::PARENT) {
-            curr.task_ext()
+            curr_ext
                 .thread
                 .process()
                 .parent()
                 .ok_or(LinuxError::EINVAL)?
         } else {
-            curr.task_ext().thread.process().clone()
+            curr_ext.thread.process().clone()
         };
         let builder = parent.fork(tid);
         let aspace = if flags.contains(CloneFlags::VM) {
-            curr.task_ext().process_data().aspace.clone()
+            curr_ext.process_data().aspace.clone()
         } else {
             #[cfg(feature = "COW")]
             let mut aspace = current_aspace.clone_on_write()?;
@@ -322,35 +351,38 @@ pub fn clone_task(
             Arc::default()
         };
         let process_data = ProcessData::new(
-            curr.task_ext().process_data().exe_path.read().clone(),
+            curr_ext.process_data().exe_path.read().clone(),
             aspace,
             signal,
             exit_signal,
         );
 
+        // 对于新进程，使用新创建的命名空间
+        let new_ns = &process_data.ns;
+
         if flags.contains(CloneFlags::FILES) {
             FD_TABLE
-                .deref_from(&process_data.ns)
+                .deref_from(&new_ns) // 使用新进程的命名空间
                 .init_shared(FD_TABLE.share());
         } else {
             FD_TABLE
-                .deref_from(&process_data.ns)
+                .deref_from(&new_ns) // 使用新进程的命名空间
                 .init_new(FD_TABLE.copy_inner());
         }
 
         if flags.contains(CloneFlags::FS) {
             CURRENT_DIR
-                .deref_from(&process_data.ns)
+                .deref_from(&new_ns) // 使用新进程的命名空间
                 .init_shared(CURRENT_DIR.share());
             CURRENT_DIR_PATH
-                .deref_from(&process_data.ns)
+                .deref_from(&new_ns) // 使用新进程的命名空间
                 .init_shared(CURRENT_DIR_PATH.share());
         } else {
             CURRENT_DIR
-                .deref_from(&process_data.ns)
+                .deref_from(&new_ns) // 使用新进程的命名空间
                 .init_new(CURRENT_DIR.copy_inner());
             CURRENT_DIR_PATH
-                .deref_from(&process_data.ns)
+                .deref_from(&new_ns) // 使用新进程的命名空间
                 .init_new(CURRENT_DIR_PATH.copy_inner());
         }
         &builder.data(process_data).build()
