@@ -85,8 +85,8 @@ impl AddrSpace {
         mmap_io: Arc<dyn MmapIO>,
         populate: bool,
     ) -> AxResult<VirtAddr> {
-        debug_assert!(start.is_aligned_4k());
-        debug_assert!(size % 4096 == 0);
+        assert!(start.is_aligned_4k());
+        assert!(size % 4096 == 0);
 
         let start = if flags.contains(MmapFlags::MAP_FIXED) {
             // TODO: check if it's USER

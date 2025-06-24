@@ -4,7 +4,7 @@ use crate::{
     ctypes::TimeStat,
     elf::OwnedElfFile,
     mm::{load_elf_to_mem, map_trampoline},
-    task::add_thread_to_table,
+    task::{add_thread_to_table, spawn_signal_ctx},
 };
 use alloc::{
     boxed::Box,
@@ -241,7 +241,7 @@ pub fn clone_task(
                 .data::<ProcessData>()
                 .map_or_else(Arc::default, |it| it.signal.clone())
         } else {
-            Arc::default()
+            spawn_signal_ctx()
         };
         let process_data = ProcessData::new(
             curr.task_ext().process_data().exe_path.read().clone(),

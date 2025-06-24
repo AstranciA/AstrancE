@@ -437,6 +437,11 @@ pub unsafe fn sys_fstatat(
         "sys_fstatat <= {} {pathname_p:p} {:?} {:#o}",
         dirfd, pathname, flags
     );
+
+    if flags & AT_EMPTY_PATH != 0 && pathname.is_empty() {
+        return Ok(unsafe { sys_fstat(dirfd, statbuf) });
+    }
+
     if pathname.starts_with('/') {
         let dir = ROOT_DIR.clone();
         let file = dir.lookup(pathname)?;

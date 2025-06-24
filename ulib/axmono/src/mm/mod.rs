@@ -5,8 +5,9 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use arceos_posix_api::{add_file_or_directory_fd, sys_open};
 use axerrno::AxResult;
-use axfs::api::write;
+use axfs::api::{current_dir, write};
 use axfs::fops::OpenOptions;
+use axfs::path::join;
 use axhal::trap::{PAGE_FAULT, register_trap_handler};
 use axhal::{
     mem::{VirtAddr, virt_to_phys},
@@ -133,6 +134,19 @@ fn setup_user_stack(
         true,
     )?;
 
+    for au in auxv {
+        let a_type = au.get_type();
+        let a_val = au.value_mut_ref();
+        match a_type {
+            AuxvType::BASE=> {
+                *a_val = 0x10000;
+            }
+            _ => {}
+        }
+
+        warn!("auxv: {} 0x{a_val:x?}", a_type as usize);
+    }
+
     // 写入栈数据并返回偏移量
     let ustack_end = ustack_start + ustack_size;
     uspace.write(ustack_end - stack_data.len(), stack_data.as_slice())?;
@@ -237,7 +251,15 @@ fn map_elf_sections_with_auxv(
 ) -> Result<(VirtAddr, VirtAddr, Option<VirtAddr>), axerrno::AxError> {
     let mut tp: Option<VirtAddr> = None;
     let mut args_ = vec![interp_info.path()];
-    args.map(|args| args_.extend_from_slice(args));
+    args.map(|args| {
+        let path = if args[0].contains("/") {
+            args[0].clone()
+         } else {
+            join(current_dir().unwrap().as_str(), &[args[0].as_str()])
+        };
+        args_.push(path);
+        args_.extend_from_slice(&args[1..])
+    });
     let mut envs_ = Vec::new();
     envs.map(|env| envs_.extend_from_slice(env));
     /*

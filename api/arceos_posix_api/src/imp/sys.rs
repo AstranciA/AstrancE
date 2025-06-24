@@ -44,6 +44,7 @@ pub fn sys_sysconf(name: c_int) -> c_long {
 }
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct UtsName {
     pub sysname: [c_char; 65],
     pub nodename: [c_char; 65],

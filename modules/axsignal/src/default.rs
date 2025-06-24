@@ -7,11 +7,12 @@ pub fn default_signal_handler(signal: Signal, ctx: &mut SignalContext) {
         Signal::SIGINT | Signal::SIGKILL => {
             // 杀死进程
             let curr = current();
+            debug!("Received {:?}, killing process", signal);
             exit(0);
         }
         _ => {
             // 忽略信号
-            warn!("Ignoring signal: {:?}", signal)
+            debug!("Ignoring signal: {:?}", signal)
         }
     }
 }

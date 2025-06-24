@@ -13,7 +13,7 @@ use memory_addr::{VirtAddr, VirtAddrRange};
 use crate::{
     mm::trampoline_vaddr,
     ptr::{PtrWrapper, UserPtr},
-    task::PROCESS_GROUP_TABLE,
+    task::{sys_exit, PROCESS_GROUP_TABLE},
 };
 
 use super::{
@@ -27,7 +27,7 @@ pub fn default_signal_handler(signal: Signal, ctx: &mut SignalContext) {
             // 杀死进程
             let curr = current();
             debug!("kill myself");
-            exit(curr.task_ext().thread.process().exit_code());
+            sys_exit(curr.task_ext().thread.process().exit_code());
         }
         _ => {
             // 忽略信号

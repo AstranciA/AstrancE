@@ -1,4 +1,5 @@
 use core::{error, ffi::CStr};
+use axfs::path::{base_name, join};
 use axio::Read;
 use memory_addr::VirtAddr;
 use xmas_elf::program::SegmentData;
@@ -26,14 +27,10 @@ pub(crate) fn find_interpreter(elf: &OwnedElfFile) -> AxResult<Option<String>> {
             .map_err(|_| AxError::InvalidData)?
             .into();
 
+        let interp_basename = base_name(path.as_str()).ok_or(AxError::InvalidInput)?;
+        let interp_path = join(interp_basename.as_str(), &["/lib"]);
 
-        if path.contains("ld-linux-riscv") || path.contains("ld-musl-riscv") {
-            path = "/lib/libc.so".into();
-        }
-        if path.contains("ld-linux-loongarch") || path.contains("ld-musl-loongarch") {
-            path = "/lib64/libc.so".into();
-        }
-        info!("Found interpreter: {}", path);
+        info!("Found interpreter: {}, using {}", path, interp_path);
         Ok(Some(path))
     } else {
         // 没有解释器段，说明不是动态链接的可执行文件

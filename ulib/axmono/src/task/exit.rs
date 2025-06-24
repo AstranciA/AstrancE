@@ -21,7 +21,7 @@ pub fn do_exit(exit_code: i32, group_exit: bool) -> ! {
     }
 
     let process = thread.process();
-    if thread.exit(exit_code)  || true{
+    if thread.exit(exit_code)  || true {
         if let Some(parent) = process.parent() {
             /*
              *if let Some(signo) = process.data::<ProcessData>().and_then(|it| it.exit_signal) {

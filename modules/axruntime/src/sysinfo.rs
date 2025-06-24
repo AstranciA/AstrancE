@@ -7,6 +7,7 @@ pub const SYSINFO: SysInfo = SysInfo {
     logo: axconfig::LOGO,
 };
 
+#[derive(Debug)]
 pub struct SysInfo {
     pub sysname: &'static str,
     pub nodename: &'static str,

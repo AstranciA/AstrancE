@@ -4,7 +4,7 @@ use alloc::sync::Arc;
 use axerrno::{LinuxError, LinuxResult};
 use axmm::{MmapFlags, MmapPerm};
 use axtask::{TaskExtRef, current};
-use memory_addr::va;
+use memory_addr::{va, MemoryAddr};
 use page_table_entry::MappingFlags;
 
 use crate::mm::mmap::{MmapIOImpl, MmapResource};
@@ -18,8 +18,9 @@ pub(crate) fn sys_brk(new_heap_top: usize) -> LinuxResult<isize> {
         aspace.set_heap_top(va!(new_heap_top));
     }
     // FIXME: return old_top or new_top????
-    Ok(old_top.as_usize() as isize)
-    //Ok(aspace.heap().top().as_usize() as isize)
+    //Ok(0)
+    //Ok(old_top.as_usize() as isize)
+    Ok(aspace.heap().top().as_usize() as isize)
 }
 
 pub(crate) fn sys_mprotect(addr: usize, size: usize, prot: usize) -> LinuxResult<isize> {
@@ -31,7 +32,7 @@ pub(crate) fn sys_mprotect(addr: usize, size: usize, prot: usize) -> LinuxResult
         addr, size, prot
     );
     // TODO: Validate address and size
-    aspace.protect(addr.into(), size, prot)?;
+    aspace.protect(addr.into(), size.align_up_4k(), prot)?;
     Ok(0)
 }
 
@@ -50,8 +51,8 @@ pub(crate) fn sys_mmap(
         return Err(LinuxError::EINVAL);
     }
 
-    let perm = MmapPerm::from_bits(prot).ok_or(LinuxError::EINVAL)?;
-    let flags = MmapFlags::from_bits(flags).ok_or(LinuxError::EINVAL)?;
+    let perm = MmapPerm::from_bits_retain(prot);
+    let flags = MmapFlags::from_bits_retain(flags);
 
     // 检查共享类型标志是否有效
     /*
@@ -87,7 +88,7 @@ pub(crate) fn sys_mmap(
     // 执行映射
     let populate = flags.contains(MmapFlags::MAP_POPULATE);
     //let populate = true;
-    if let Ok(va) = aspace.mmap(addr.into(), len, perm, flags, mmap_io, populate) {
+    if let Ok(va) = aspace.mmap(addr.into(), len.align_up_4k(), perm, flags, mmap_io, populate) {
         Ok(va.as_usize() as isize)
     } else {
         Err(LinuxError::ENOMEM)
