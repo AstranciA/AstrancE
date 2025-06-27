@@ -570,7 +570,6 @@ dependencies = [
  "axprocess",
  "axsignal",
  "axsync",
- "axsyscall",
  "axtask",
  "bitflags 2.9.0",
  "crate_interface",
@@ -625,6 +624,16 @@ dependencies = [
  "kspin",
  "lazyinit",
  "weak-map",
+]
+
+[[package]]
+name = "axptr"
+version = "0.1.0"
+dependencies = [
+ "axerrno",
+ "axhal",
+ "axmm",
+ "memory_addr",
 ]
 
 [[package]]
@@ -697,6 +706,7 @@ dependencies = [
  "axhal",
  "axlog",
  "axmm",
+ "axmono",
  "axtask",
  "linkme",
  "syscalls",

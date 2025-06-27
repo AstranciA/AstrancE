@@ -60,7 +60,7 @@ axtask = { path = "modules/axtask" }
 axdma = { path = "modules/axdma" }
 axsyscall = { path = "modules/axsyscall" }
 acbat = { path = "modules/acbat" }
-
+axptr = {path="modules/axptr"}
 syscalls = { git = "https://github.com/jasonwhite/syscalls.git", default-features = false, features = [
   "loongarch64",
   "riscv64",

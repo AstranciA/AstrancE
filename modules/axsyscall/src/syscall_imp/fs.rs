@@ -87,13 +87,6 @@ pub unsafe fn sys_fstat(fd: c_int, buf: *mut test_stat) -> SyscallResult {
     let mut stat_buf = ctypes::stat::default();
     let result = unsafe { api::sys_fstat(fd, &mut stat_buf as *mut _) }.to_linux_result();
     *buf = test_stat::from(stat_buf);
-    // let stat = &*buf;
-    // debug!{
-    //         "!!!atime: {:?}, ctime: {:?}, mtime: {:?}",
-    //         stat.st_atime_sec,
-    //         stat.st_ctime_sec,
-    //         stat.st_mtime_sec,
-    //     };
     result
 }
 

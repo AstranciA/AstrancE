@@ -439,8 +439,10 @@ impl AddrSpace {
         mut range: VirtAddrRange,
         access_flags: MappingFlags,
     ) -> bool {
+        let access_flags  = MappingFlags::unmark_cow(access_flags);
         // TODO: COW
         for area in self.areas.iter() {
+            // warn!("{range:?} {access_flags:?}  {area:?}");
             if area.end() <= range.start {
                 continue;
             }

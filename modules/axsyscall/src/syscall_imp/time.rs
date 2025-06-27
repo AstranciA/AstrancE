@@ -15,3 +15,8 @@ pub fn sys_nanosleep(req: *const ctypes::timespec, rem: *mut ctypes::timespec) -
 pub fn sys_get_time_of_day(ts: *mut ctypes::timeval) -> SyscallResult {
     unsafe { api::sys_get_time_of_day(ts) }.to_linux_result()
 }
+
+#[inline]
+pub fn sys_times(tms_ptr: usize) -> SyscallResult {
+    axmono::syscall::time::sys_times(tms_ptr)
+}

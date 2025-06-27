@@ -28,6 +28,6 @@ axmm = { workspace = true }
 axconfig = { workspace = true }
 axlog = { workspace = true }
 axfs_vfs = {workspace = true}
-
+axmono = {workspace = true}
 linkme = { workspace = true }
 
