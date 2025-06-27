@@ -1,3 +1,5 @@
+use core::cmp::min;
+
 use alloc::sync::Arc;
 use axerrno::{AxError, AxResult, ax_err};
 use axhal::{
@@ -194,38 +196,37 @@ impl AddrSpace {
     }
     pub fn munmap(&mut self, start: VirtAddr, size: usize) -> AxResult {
         // TODO: is it correct?
-        let size = size.align_up_4k();
+        let mut start = start;
+        let mut size = size.align_up_4k();
         let end = start + size;
-        let area = match self.areas.find_mut(start) {
+        while let area = match self.areas.find_mut(start) {
             Some(area) => area,
             None => return Ok(()),
-        };
-        if area.end() < end {
-            error!(
-                "[{:#x}, {:#x}) out of range [{:#x}, {:#x})",
-                start,
-                end,
-                area.start(),
-                area.end()
-            );
-            return ax_err!(BadAddress, "munmap end out of range");
-        }
+        } {
+            size = min(size, area.end() - start);
+            let end = start + size;
 
-        let _mmap_io = if let Backend::Alloc { va_type, populate } = area.backend() {
-            if let VmAreaType::Mmap(mmap_io) = va_type {
-                Ok(mmap_io)
+            let _mmap_io = if let Backend::Alloc { va_type, populate } = area.backend() {
+                if let VmAreaType::Mmap(mmap_io) = va_type {
+                    Ok(mmap_io)
+                } else {
+                    Err(AxError::InvalidInput)
+                }
             } else {
                 Err(AxError::InvalidInput)
-            }
-        } else {
-            Err(AxError::InvalidInput)
-        }?;
+            }?;
 
-        area.unmap_frames(start, size, &mut self.pt).unwrap();
-        let is_empty = area.frames_count() == 0;
-        let area_start = area.start();
-        if is_empty {
-            self.unmap_area(area_start);
+            area.unmap_frames(start, size, &mut self.pt).unwrap();
+            let is_empty = area.frames_count() == 0;
+            let area_start = area.start();
+            if is_empty {
+                self.unmap_area(area_start);
+            }
+            start = end;
+        }
+        if size > 0 {
+            error!("[{:#x}, {:#x}) out of range", start, end);
+            return ax_err!(BadAddress, "munmap end out of range");
         }
 
         Ok(())
