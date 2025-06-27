@@ -26,6 +26,7 @@ use memory_addr::MemoryAddr;
 use syscalls::Sysno;
 
 mod mm;
+mod pthread;
 
 syscall_handler_def!(
         exit => [code,..] {
@@ -34,13 +35,25 @@ syscall_handler_def!(
         exit_group => [code,..]{
             task::exit::sys_exit_group((code & 0xff) as i32)
         }
-        clone => [flags, sp, ..] {
+        clone => [flags, sp, parent_tid, a4, a5, ..] {
             let clone_flags = CloneFlags::from_bits_retain(flags as u32);
+            let child_tid = {
+                #[cfg(any(target_arch = "x86_64", target_arch = "loongarch64"))] {a4}
+                #[cfg(not(any(target_arch = "x86_64", target_arch = "loongarch64")))] {a5}
+            };
+            let tls = {
+                #[cfg(any(target_arch = "x86_64", target_arch = "loongarch64"))] {a5}
+                #[cfg(not(any(target_arch = "x86_64", target_arch = "loongarch64")))] {a4}
+            };
+
 
             let child_task = task::clone_task(
                 if (sp != 0) { Some(sp) } else { None },
                 clone_flags,
                 true,
+                parent_tid,
+                child_tid,
+                tls,
             )?;
             Ok(child_task.task_ext().thread.process().pid() as isize)
         }
@@ -152,16 +165,19 @@ syscall_handler_def!(
         kill => [pid, sig, ..] {
             task::signal::sys_kill(pid as _, sig as _)
         }
+        tkill => [tid, sig, ..] { // 对应 sys_tkill
+            task::signal::sys_tkill(tid as _, sig as _)
+        }
+        tgkill => [tgid, tid, sig, ..] { // 对应 sys_tgkill
+            task::signal::sys_tgkill(tgid as _, tid as _, sig as _)
+        }
         //FIXME incomplete！
         setxattr => _ {
             Ok(0)
         }
-        futex => _ {
-            warn!("futex syscall not implemented, task exit");
-            //task::exit::do_exit(-1 << 8, true);
-            task::sys_exit(-1);
-            //Ok(0)
-            //Err(LinuxError::ENOSYS)
+        futex => [uaddr, futex_op, val, timeout, uaddr2, val3, ..] {
+            // 调用 syscall/pthread.rs 中实现的 sys_futex
+            pthread::sys_futex(uaddr, futex_op, val, timeout as isize, uaddr2, val3)
         }
 );
 

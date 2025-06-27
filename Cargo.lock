@@ -659,6 +659,7 @@ dependencies = [
  "bitflags 2.9.0",
  "linux-raw-sys 0.9.4",
  "memory_addr",
+ "numeric-enum-macro",
  "riscv",
  "syscalls",
 ]

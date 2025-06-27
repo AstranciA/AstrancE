@@ -134,18 +134,18 @@ fn setup_user_stack(
         true,
     )?;
 
-    for au in auxv {
-        let a_type = au.get_type();
-        let a_val = au.value_mut_ref();
-        match a_type {
-            AuxvType::BASE=> {
-                *a_val = 0x10000;
-            }
-            _ => {}
-        }
-
-        warn!("auxv: {} 0x{a_val:x?}", a_type as usize);
-    }
+    /*
+     *for au in auxv {
+     *    let a_type = au.get_type();
+     *    let a_val = au.value_mut_ref();
+     *    match a_type {
+     *        AuxvType::BASE=> {
+     *            *a_val = 0x10000;
+     *        }
+     *        _ => {}
+     *    }
+     *}
+     */
 
     // 写入栈数据并返回偏移量
     let ustack_end = ustack_start + ustack_size;

@@ -12,7 +12,10 @@ mod backend;
 pub mod heap;
 
 pub use self::aspace::AddrSpace;
-pub use self::backend::Backend;
+pub use self::backend::{
+    Backend, FrameTrackerImpl as FrameTracker, FrameTrackerMap, FrameTrackerRef, FrameTrackerWeak,
+    TrackedPhysAddr,
+};
 pub use aspace::mmap::{MmapFlags, MmapIO, MmapPerm};
 
 use axerrno::{AxError, AxResult};

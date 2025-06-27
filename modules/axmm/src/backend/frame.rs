@@ -1,6 +1,6 @@
-use core::fmt::Debug;
+use core::{fmt::Debug, ops::Deref};
 
-use memory_addr::{FrameTracker, PAGE_SIZE_4K, PhysAddr, VirtAddr};
+use memory_addr::{FrameTracker, MemoryAddr, PAGE_SIZE_4K, PhysAddr, VirtAddr};
 use memory_set::MappingBackend;
 
 use crate::backend::alloc::dealloc_frame;
@@ -12,7 +12,7 @@ use crate::backend::alloc::dealloc_frame;
  *    1G()
  *}
  */
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct FrameTrackerImpl {
     pub pa: PhysAddr,
 
@@ -69,3 +69,23 @@ impl Drop for FrameTrackerImpl {
 pub type FrameTrackerRef = alloc::sync::Arc<FrameTrackerImpl>;
 pub type FrameTrackerWeak = alloc::sync::Weak<FrameTrackerImpl>;
 pub type FrameTrackerMap = alloc::collections::BTreeMap<VirtAddr, FrameTrackerRef>;
+
+#[derive(Debug,Clone, PartialEq, Eq)]
+pub struct TrackedPhysAddr(FrameTrackerRef, usize);
+
+impl TrackedPhysAddr {
+    pub fn new(frame_tracker: FrameTrackerRef, addr_within_frame: usize) -> Self {
+        assert!(addr_within_frame < PAGE_SIZE_4K as usize); // 4K
+        Self(frame_tracker, addr_within_frame)
+    }
+
+    pub fn as_phys_addr(&self) -> PhysAddr {
+        self.0.clone().start().offset(self.1 as isize)
+    }
+}
+
+impl Into<PhysAddr> for TrackedPhysAddr {
+    fn into(self) -> PhysAddr {
+        self.0.clone().start().offset(self.1 as isize)
+    }
+}

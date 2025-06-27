@@ -1,5 +1,6 @@
 #![feature(naked_functions)]
 #![no_std]
+#![allow(non_camel_case_types)]
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
@@ -7,10 +8,14 @@ extern crate axlog;
 
 extern crate alloc;
 
+pub mod siginfo;
+pub use siginfo::*;
+
 #[cfg(feature = "default_handler")]
 mod default;
 #[cfg(feature = "default_handler")]
 pub use default::*;
+use siginfo::SigInfo;
 
 use core::{
     arch::naked_asm,
@@ -31,49 +36,48 @@ use linux_raw_sys::general::*;
 use memory_addr::{VirtAddr, VirtAddrRange};
 use syscalls::Sysno;
 
+use numeric_enum_macro::numeric_enum;
 const NSIG: usize = 64;
 /// signals
-#[repr(usize)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Signal {
-    NONE = 0,
-    //SIGBLOCK = SIG_BLOCK as usize,
-    //SIGUNBLOCK = SIG_UNBLOCK,
-    //SIGSETMASK = SIG_SETMASK,
-    SIGHUP = SIGHUP as usize,
-    SIGINT = SIGINT as usize,
-    SIGQUIT = SIGQUIT as usize,
-    SIGILL = SIGILL as usize,
-    SIGTRAP = SIGTRAP as usize,
-    //SIGABRT = SIGABRT,
-    SIGIOT = SIGIOT as usize,
-    SIGBUS = SIGBUS as usize,
-    SIGFPE = SIGFPE as usize,
-    SIGKILL = SIGKILL as usize,
-    SIGUSR1 = SIGUSR1 as usize,
-    SIGSEGV = SIGSEGV as usize,
-    SIGUSR2 = SIGUSR2 as usize,
-    SIGPIPE = SIGPIPE as usize,
-    SIGALRM = SIGALRM as usize,
-    SIGTERM = SIGTERM as usize,
-    SIGSTKFLT = SIGSTKFLT as usize,
-    SIGCHLD = SIGCHLD as usize,
-    SIGCONT = SIGCONT as usize,
-    SIGSTOP = SIGSTOP as usize,
-    SIGTSTP = SIGTSTP as usize,
-    SIGTTIN = SIGTTIN as usize,
-    SIGTTOU = SIGTTOU as usize,
-    SIGURG = SIGURG as usize,
-    SIGXCPU = SIGXCPU as usize,
-    SIGXFSZ = SIGXFSZ as usize,
-    SIGVTALRM = SIGVTALRM as usize,
-    SIGPROF = SIGPROF as usize,
-    SIGWINCH = SIGWINCH as usize,
-    SIGIO = SIGIO as usize,
-    //SIGPOLL = SIGPOLL as usize,
-    SIGPWR = SIGPWR as usize,
-    //SIGSYS = SIGSYS as usize,
-    SIGUNUSED = SIGUNUSED as usize,
+numeric_enum! {
+    #[repr(usize)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub enum Signal {
+        NONE = 0,
+        SIGHUP = SIGHUP as usize,
+        SIGINT = SIGINT as usize,
+        SIGQUIT = SIGQUIT as usize,
+        SIGILL = SIGILL as usize,
+        SIGTRAP = SIGTRAP as usize,
+        SIGIOT = SIGIOT as usize,
+        SIGBUS = SIGBUS as usize,
+        SIGFPE = SIGFPE as usize,
+        SIGKILL = SIGKILL as usize,
+        SIGUSR1 = SIGUSR1 as usize,
+        SIGSEGV = SIGSEGV as usize,
+        SIGUSR2 = SIGUSR2 as usize,
+        SIGPIPE = SIGPIPE as usize,
+        SIGALRM = SIGALRM as usize,
+        SIGTERM = SIGTERM as usize,
+        SIGSTKFLT = SIGSTKFLT as usize,
+        SIGCHLD = SIGCHLD as usize,
+        SIGCONT = SIGCONT as usize,
+        SIGSTOP = SIGSTOP as usize,
+        SIGTSTP = SIGTSTP as usize,
+        SIGTTIN = SIGTTIN as usize,
+        SIGTTOU = SIGTTOU as usize,
+        SIGURG = SIGURG as usize,
+        SIGXCPU = SIGXCPU as usize,
+        SIGXFSZ = SIGXFSZ as usize,
+        SIGVTALRM = SIGVTALRM as usize,
+        SIGPROF = SIGPROF as usize,
+        SIGWINCH = SIGWINCH as usize,
+        SIGIO = SIGIO as usize,
+        SIGPWR = SIGPWR as usize,
+        SIGUNUSED = SIGUNUSED as usize,
+        SIGRTMIN = SIGRTMIN as usize,
+        SIGRTMIN1 = SIGRTMIN as usize + 1
+    }
 }
 
 //#[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,7 +87,11 @@ impl Signal {
         if n as usize >= NSIG {
             None
         } else {
-            Some(unsafe { core::mem::transmute(n as usize) })
+            if let Ok(sig) = Self::try_from(n as usize) {
+                Some(sig)
+            } else {
+                None
+            }
         }
     }
 }
@@ -154,6 +162,8 @@ bitflags! {
         const SIGPWR     = 1 << (SIGPWR - 1);
         const SIGSYS     = 1 << (SIGSYS - 1);
         const SIGUNUSED  = 1 << (SIGUNUSED  - 1);
+        const SIGRTMIN  = 1 << (SIGRTMIN - 1);
+        const SIGRTMIN1  = 1 << (SIGRTMIN);
     }
 }
 
@@ -244,6 +254,7 @@ pub enum SigHandler {
     Handler(unsafe extern "C" fn(c_int)),
     //actually Action(unsafe extern "C" fn(c_int, *mut siginfo_t, *mut c_void)),
     // this is for capabilites, since the fn won't be called directly
+    //Action(unsafe extern "C" fn(c_int, *mut siginfo_t, *mut c_void)),
     Action(unsafe extern "C" fn(c_int)),
     Default(fn(Signal, &mut SignalContext)),
 }
@@ -308,11 +319,13 @@ impl TryFrom<sigaction> for SigAction {
          */
         let flags = SigFlags::from_bits_retain(act.sa_flags as usize);
         let mask = act.sa_mask.into();
+        warn!("flags: {flags:?} {act:?}");
+
         let handler = if let Some(sa_handler) = act.sa_handler {
             if flags.contains(SigFlags::SIG_INFO) {
-                SigHandler::Handler(sa_handler)
-            } else {
                 SigHandler::Action(sa_handler)
+            } else {
+                SigHandler::Handler(sa_handler)
             }
         } else {
             // FIXME: using kernel provided default
@@ -376,7 +389,6 @@ impl Into<sigaction> for SigAction {
 pub const SIG_DFL: usize = 0;
 pub const SIG_IGN: usize = 1;
 
-
 #[naked]
 #[unsafe(no_mangle)]
 #[unsafe(link_section = ".trampoline.sigreturn")]
@@ -405,9 +417,10 @@ pub unsafe extern "C" fn sigreturn_trampoline() {
 // 进程信号上下文
 pub struct SignalContext {
     stack: SignalFrameManager,
-    actions: [SigAction; NSIG], // 信号处理表
-    blocked: SignalSet,         // 被阻塞的信号
-    pending: SignalSet,         // 待处理信号
+    actions: [SigAction; NSIG],     // 信号处理表
+    infos: [Option<SigInfo>; NSIG], // 信号处理表
+    blocked: SignalSet,             // 被阻塞的信号
+    pending: SignalSet,             // 待处理信号
 }
 
 impl Default for SignalContext {
@@ -415,6 +428,7 @@ impl Default for SignalContext {
         let mut default = Self {
             stack: Default::default(),
             actions: [Default::default(); NSIG],
+            infos: [None; NSIG],
             blocked: Default::default(),
             pending: Default::default(),
         };
@@ -428,12 +442,13 @@ impl Default for SignalContext {
 
 impl SignalContext {
     /// 向进程发送信号
-    pub fn send_signal(&mut self, sig: SignalSet) {
+    pub fn send_signal(&mut self, sig: Signal, info: Option<SigInfo>) {
         debug!(
             "send signal: {:?}, pending: {:?}, blocked: {:?}",
             sig, self.pending, self.blocked
         );
-        self.pending = self.pending.union(sig);
+        self.pending.insert(sig.into());
+        self.infos[sig as usize] = info;
     }
 
     /// 检查是否有待处理信号
@@ -442,8 +457,8 @@ impl SignalContext {
     }
 
     /// 获取信号处理动作，返回之前的动作
-    pub fn get_action(&mut self, sig: Signal) -> &SigAction {
-        &self.actions[sig as usize]
+    pub fn get_action(&mut self, sig: Signal) -> &mut SigAction {
+        &mut self.actions[sig as usize]
     }
     /// 设置信号处理动作，返回之前的动作
     pub fn set_action(&mut self, sig: Signal, act: SigAction) -> SigAction {
@@ -771,94 +786,182 @@ impl SignalFrameManager {
     Ok(None)
 }*/
 
+/// 处理待处理的信号
+///
+/// # 参数
+/// * `sigctx` - 信号上下文
+/// * `thread_tf` - 当前线程的陷阱帧
+/// * `trampoline` - 信号返回跳板的虚拟地址
+/// * `actionctx` - 可选的额外信号上下文，用于获取信号处理动作
+///
+/// # 返回
+/// * `Ok(Some((UspaceContext, VirtAddr)))` - 需要切换到用户态执行信号处理函数，返回用户上下文和内核栈顶
+/// * `Ok(None)` - 没有需要处理的信号
+/// * `Err(SignalError)` - 处理信号时发生错误
 pub fn handle_pending_signals(
     sigctx: &mut SignalContext,
     thread_tf: &TrapFrame,
     trampoline: VirtAddr,
+    mut actionctx: Option<&mut SignalContext>,
 ) -> SignalResult<Option<(UspaceContext, VirtAddr)>> {
-    while let Some(sig) = sigctx.pending.take_one() {
-        // 找到最高优先级的待处理信号
+    // 尝试获取一个待处理且未被阻塞的信号
+    while let Some(sig) = sigctx.deliver_one() {
         debug!("handle signal: {sig:?}");
-        let old_mask = (*sigctx).blocked;
-        let action = *sigctx.get_action(sig);
+        let old_mask = sigctx.blocked;
+
+        // 获取信号的处理动作
+        let action = if let Some(ref mut actctx) = actionctx {
+            *actctx.get_action(sig) // 从额外上下文获取处理动作
+        } else {
+            *sigctx.get_action(sig) // 从主上下文获取处理动作
+        };
+
+        let info = sigctx.infos[sig as usize];
+
         let SigAction {
             handler,
             mask: act_mask,
             flags,
         } = action;
-        trace!("handler: {handler:?}, action_mask: {act_mask:?}, flags: {flags:?}");
+        debug!("handler: {handler:?}, action_mask: {act_mask:?}, flags: {flags:?}");
 
         match handler {
-            SigHandler::Default(f) => f(sig, &mut *sigctx),
-            SigHandler::Ignore => {} // 直接忽略
-            SigHandler::Handler(handler) => {
-                // 设置信号处理栈帧
-                let mask = old_mask.union(act_mask);
-                (*sigctx).blocked = mask;
-                assert_eq!(
-                    sigctx.load(unsafe { axhal::arch::read_trap_frame() }, SignalFrameData {
-                        signal: sig,
-                        uc_sigmask: old_mask,
-                        sigmask: mask,
-                        flags: flags,
-                        orig_frame: *thread_tf,
-                    })?,
-                    0,
-                    "signal stack scratch is not empty"
-                );
-                let current_frame: &mut SignalFrame = sigctx.current_frame()?;
-                let kstack_top = current_frame.ptr();
-                // 在syscall rt_sigreturn中清除信号。
-                let mut uctx = {
-                    UspaceContext::new(handler as usize, thread_tf.get_sp().into(), sig as usize)
-                };
-                // 设置线程本地存储和全局指针
-                uctx.0.regs.tp = thread_tf.regs.tp;
-                #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
-                {
-                    uctx.0.regs.gp = thread_tf.regs.gp;
-                }
-                // 设置返回地址为信号返回trampoline
-                uctx.0.set_ra(trampoline.as_usize());
-
-                return Ok(Some((uctx, kstack_top)));
+            SigHandler::Default(f) => {
+                // 执行默认处理函数
+                f(sig, &mut *sigctx);
             }
-            SigHandler::Action(handler) => {
-                // 设置信号处理栈帧
-                let mask = old_mask.union(act_mask);
-                (*sigctx).blocked = mask;
+            SigHandler::Ignore => {
+                // 直接忽略信号
+                debug!("Ignoring signal {sig:?}");
+            }
+            SigHandler::Handler(handler_fn) | SigHandler::Action(handler_fn) => {
+                // 计算新的信号掩码（当前掩码 + 处理函数指定的掩码）
+                let mask = if flags.contains(SigFlags::NO_DEFER) {
+                    // 如果设置了NO_DEFER，不阻塞当前信号
+                    old_mask.union(act_mask)
+                } else {
+                    // 否则，在处理期间阻塞当前信号
+                    old_mask.union(act_mask).union(SignalSet::from(sig))
+                };
+
+                // 更新信号掩码
+                sigctx.blocked = mask;
+
+                // 保存当前上下文到信号栈帧
                 assert_eq!(
                     sigctx.load(unsafe { axhal::arch::read_trap_frame() }, SignalFrameData {
                         signal: sig,
-                        uc_sigmask: old_mask,
-                        sigmask: mask,
-                        flags: flags,
-                        orig_frame: *thread_tf,
+                        uc_sigmask: old_mask, // 保存原始掩码用于恢复
+                        sigmask: mask,        // 当前使用的掩码
+                        flags,
+                        orig_frame: *thread_tf, // 保存原始陷阱帧
                     })?,
                     0,
                     "signal stack scratch is not empty"
                 );
+
+                // 获取当前信号栈帧
                 let current_frame: &mut SignalFrame = sigctx.current_frame()?;
                 let kstack_top = current_frame.ptr();
-                // 在syscall rt_sigreturn中清除信号。
-                let mut uctx = {
-                    UspaceContext::new(handler as usize, thread_tf.get_sp().into(), sig as usize)
-                };
+
+                // 准备用户上下文
+                let mut uctx: UspaceContext;
+
+                // 根据是否设置了SA_SIGINFO标志决定处理函数的参数
+                if flags.contains(SigFlags::SIG_INFO) && matches!(handler, SigHandler::Action(_)) {
+                    // 处理SA_SIGINFO情况：需要创建siginfo_t和ucontext_t结构传递给处理函数
+
+                    // 1. 分配并准备siginfo_t结构
+                    // 注意：这里需要在用户空间分配siginfo_t结构
+                    // 假设我们已经在用户栈上分配了空间，并获取了指针
+                    let siginfo_ptr = thread_tf.sp() - core::mem::size_of::<siginfo_t>();
+                    let siginfo_ptr = VirtAddr::from(siginfo_ptr & !0x7); // 8字节对齐
+                    if let Some(info) = info {
+                        unsafe {
+                            info.fill_raw_siginfo(&mut *(siginfo_ptr.as_ptr() as *mut siginfo_t))
+                        };
+                    } else {
+                        error!("no sig info found");
+                    }
+
+                    // 2. 分配并准备ucontext_t结构
+                    // 同样在用户栈上分配
+                    let ucontext_ptr = siginfo_ptr.as_usize() - 128; // 预留足够空间给ucontext_t
+                    let ucontext_ptr = VirtAddr::from(ucontext_ptr & !0x7); // 8字节对齐
+
+                    // 3. 创建用户上下文，传递三个参数：信号编号、siginfo_t指针、ucontext_t指针
+                    uctx = UspaceContext::new(
+                        handler_fn as usize,
+                        ucontext_ptr.into(), // 新的栈顶
+                        sig as usize,        // 第一个参数：信号编号
+                    );
+
+                    // 设置第二个参数：siginfo_t指针
+                    #[cfg(target_arch = "riscv64")]
+                    {
+                        uctx.0.regs.a1 = siginfo_ptr.as_usize();
+                    }
+                    #[cfg(target_arch = "loongarch64")]
+                    {
+                        uctx.0.regs.a1 = siginfo_ptr.as_usize();
+                    }
+
+                    // 设置第三个参数：ucontext_t指针
+                    #[cfg(target_arch = "riscv64")]
+                    {
+                        uctx.0.regs.a2 = ucontext_ptr.as_usize();
+                    }
+                    #[cfg(target_arch = "loongarch64")]
+                    {
+                        uctx.0.regs.a2 = ucontext_ptr.as_usize();
+                    }
+                } else {
+                    // 处理普通情况：只传递信号编号
+                    uctx = UspaceContext::new(
+                        handler_fn as usize,
+                        thread_tf.get_sp().into(),
+                        sig as usize,
+                    );
+                }
+
                 // 设置线程本地存储和全局指针
                 uctx.0.regs.tp = thread_tf.regs.tp;
                 #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
                 {
                     uctx.0.regs.gp = thread_tf.regs.gp;
                 }
-                // 设置返回地址为信号返回trampoline
+
+                // 设置返回地址为信号返回跳板
                 uctx.0.set_ra(trampoline.as_usize());
 
+                // 如果设置了SA_RESETHAND，在执行处理函数前将处理动作重置为默认
+                if flags.contains(SigFlags::RESET_HAND)
+                    && sig != Signal::SIGKILL
+                    && sig != Signal::SIGSTOP
+                {
+                    let default_action = SigAction {
+                        handler: SigHandler::Default(handle_default_signal),
+                        mask: SignalSet::empty(),
+                        flags: SigFlags::empty(),
+                    };
+
+                    if let Some(ref mut actctx) = actionctx {
+                        *actctx.get_action(sig) = default_action;
+                    } else {
+                        *sigctx.get_action(sig) = default_action;
+                    }
+                }
+
+                // 返回用户上下文和内核栈顶，切换到用户态执行信号处理函数
                 return Ok(Some((uctx, kstack_top)));
             }
         };
 
+        // 如果信号被忽略或执行了默认处理，恢复原始掩码
         sigctx.blocked = old_mask;
     }
+
+    // 没有需要处理的信号
     Ok(None)
 }
 

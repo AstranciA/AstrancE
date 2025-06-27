@@ -17,6 +17,7 @@ pub mod ctypes;
 pub mod ptr;
 pub mod utils;
 pub mod fs;
+pub mod pthread;
 
 mod dynamic;
 use core::clone;

@@ -29,6 +29,7 @@ axlog = { workspace = true }
 axhal = { workspace = true }
 axtask = { workspace = true, optional = true }
 axerrno = "0.1"
+numeric-enum-macro = { git = "https://github.com/mexus/numeric-enum-macro" }
 #linux-raw-sys = { workspace = true }
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
 riscv = "0.12"

@@ -1,7 +1,7 @@
 use axprocess::Pid;
-use axsignal::{Signal, SignalSet};
+use axsignal::{SigCode, SigCodeSigChld, SigStatus, Signal, SignalSet};
 //use axsignal::{SignalInfo, Signo};
-use crate::task::ProcessData;
+use crate::task::{ProcessData, SigInfo_, send_signal_process};
 use axtask::{TaskExtRef, current};
 use linux_raw_sys::general::SI_KERNEL;
 
@@ -21,7 +21,7 @@ pub fn do_exit(exit_code: i32, group_exit: bool) -> ! {
     }
 
     let process = thread.process();
-    if thread.exit(exit_code)  || true {
+    if thread.exit(exit_code) || true {
         if let Some(parent) = process.parent() {
             /*
              *if let Some(signo) = process.data::<ProcessData>().and_then(|it| it.exit_signal) {
@@ -34,7 +34,16 @@ pub fn do_exit(exit_code: i32, group_exit: bool) -> ! {
                     .and_then(|it| it.exit_signal)
                     .unwrap_or(Signal::SIGCHLD);
                 debug!("send {:?} to parent {:?}", sig, parent.pid());
-                parent_data.send_signal(sig);
+                send_signal_process(
+                    &parent.clone(),
+                    sig,
+                    SigInfo_::Child(
+                        SigCodeSigChld::CLD_EXITED,
+                        SigStatus::ExitCode(exit_code),
+                        0,
+                        0,
+                    ),
+                );
                 parent_data.child_exit_wq.notify_all(false);
             }
         }

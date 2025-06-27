@@ -54,6 +54,8 @@ pub(crate) fn sys_mmap(
     let perm = MmapPerm::from_bits_retain(prot);
     let flags = MmapFlags::from_bits_retain(flags);
 
+    debug!("mmap <= addr={:#x}, len={:#x}, prot={:?}, flags={:?}",addr, len, prot, flags);
+
     // 检查共享类型标志是否有效
     /*
      *if (flags & MmapFlags::MAP_TYPE_MASK).bits() > MmapFlags::MAP_SHARED_VALIDATE.bits() {

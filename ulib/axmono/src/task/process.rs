@@ -1,4 +1,7 @@
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::{
+    ptr,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use crate::{
     ctypes::TimeStat,
@@ -12,7 +15,6 @@ use alloc::{
     sync::Arc,
     vec::Vec,
 };
-use core::ffi::c_int;
 use arceos_posix_api::{FD_TABLE, ctypes::*};
 use axerrno::{AxError, AxResult, LinuxError, LinuxResult};
 use axfs::{
@@ -24,9 +26,10 @@ use axio::Read;
 use axmm::{AddrSpace, kernel_aspace};
 use axns::AxNamespace;
 use axprocess::Pid;
-use axsignal::{Signal, SignalContext};
+use axsignal::{siginfo::SigInfo, Signal, SignalContext};
 use axsync::Mutex;
 use axtask::{AxTaskRef, TaskExtRef, WaitQueue, current};
+use core::ffi::c_int;
 use memory_addr::VirtAddrRange;
 use spin::RwLock;
 use xmas_elf::program;
@@ -109,8 +112,8 @@ impl ProcessData {
         &self.signal
     }
 
-    pub fn send_signal(&self, sig: Signal) {
-        self.signal.lock().send_signal(sig.into());
+    pub fn send_signal(&self, sig: Signal, info: Option<SigInfo>) {
+        self.signal.lock().send_signal(sig.into(), info);
     }
 }
 impl Drop for ProcessData {
@@ -138,15 +141,26 @@ pub struct ThreadData {
     pub clear_child_tid: AtomicUsize,
     // The thread-level signal manager
     //pub signal: ThreadSignalManager<RawMutex, WaitQueueWrapper>,
+    pub signal: Arc<Mutex<SignalContext>>,
 }
 
 impl ThreadData {
     /// Create a new [`ThreadData`].
     #[allow(clippy::new_without_default)]
     pub fn new(proc: &ProcessData) -> Self {
+        let signal_stack = Box::new([0u8; 4096]);
+        let signalctx = spawn_signal_ctx();
+        let mut signal_ = signalctx.lock();
+
+        signal_.set_current_stack(axsignal::SignalStackType::Primary);
+        signal_.set_stack(
+            axsignal::SignalStackType::Primary,
+            VirtAddrRange::from_start_size((signal_stack.as_ptr() as usize).into(), 4096),
+        );
+        drop(signal_);
         Self {
             clear_child_tid: AtomicUsize::new(0),
-            //signal: ThreadSignalManager::new(proc.signal.clone()),
+            signal: signalctx, // FIXME: thread sig ctx
         }
     }
 
@@ -160,30 +174,45 @@ impl ThreadData {
         self.clear_child_tid
             .store(clear_child_tid, Ordering::Relaxed);
     }
+
+    pub fn signal(&self) -> &Arc<Mutex<SignalContext>> {
+        &self.signal
+    }
+
+    pub fn send_signal(&self, sig: Signal, info: Option<SigInfo>) {
+        self.signal.lock().send_signal(sig.into(), info);
+    }
 }
 
 /// fork current task
 /// **Return**
 /// - `Ok(new_task_ref)` if fork successfully
 pub fn fork(from_umode: bool) -> LinuxResult<AxTaskRef> {
-    clone_task(None, CloneFlags::empty(), from_umode)
+    clone_task(None, CloneFlags::empty(), from_umode, 0, 0, 0)
 }
 
 pub fn clone_task(
     stack: Option<usize>,
     flags: CloneFlags,
     from_umode: bool,
-    /*
-     *_ptid: usize,
-     *_tls: usize,
-     *_ctid: usize,
-     */
+    parent_tid: usize,
+    child_tid: usize,
+    tls: usize,
 ) -> LinuxResult<AxTaskRef> {
     debug!("clone_task with flags: {:?}", flags);
     let curr = current();
     let current_task_ext = curr.task_ext();
     const FLAG_MASK: u32 = 0xff;
-    let exit_signal = Signal::from_u32(flags.bits() & FLAG_MASK);
+
+    let exit_signal = flags.bits() & FLAG_MASK;
+    if exit_signal != 0 && flags.contains(CloneFlags::THREAD | CloneFlags::PARENT) {
+        return Err(LinuxError::EINVAL);
+    }
+    if flags.contains(CloneFlags::THREAD) && !flags.contains(CloneFlags::VM | CloneFlags::SIGHAND) {
+        return Err(LinuxError::EINVAL);
+    }
+
+    let exit_signal = Signal::from_u32(exit_signal);
     // new task with same ip and sp of current task
     let mut trap_frame = read_trapframe_from_kstack(curr.get_kernel_stack_top().unwrap());
 
@@ -193,6 +222,13 @@ pub fn clone_task(
         trap_frame.set_ret_code(0);
     }
 
+    let child_tid_ref = if flags.contains(CloneFlags::CHILD_SETTID) {
+        assert!(child_tid != 0);
+        Some(unsafe { &mut *(child_tid as *mut u32)})
+    } else {
+        None
+    };
+
     // TODO: clone stack since it's always changed.
     // stack is copied meanwhilst addr space is copied
     //trap_frame.set_user_sp(stack);
@@ -200,10 +236,19 @@ pub fn clone_task(
         trap_frame.set_user_sp(stack);
     }
 
-    let new_uctx = UspaceContext::from(&trap_frame);
+    let mut new_uctx = UspaceContext::from(&trap_frame);
+    if flags.contains(CloneFlags::SETTLS) {
+        new_uctx.set_tls(tls);
+    }
+
     let current_pwd = current_dir()?;
-    let mut new_task = spawn_user_task_inner(curr.name(), new_uctx, current_pwd);
+    let mut new_task = spawn_user_task_inner(curr.name(), new_uctx, current_pwd, child_tid_ref);
     let tid = new_task.id().as_u64() as Pid;
+
+    if flags.contains(CloneFlags::PARENT_SETTID) {
+        unsafe { ptr::write(parent_tid as *mut u32, tid) };
+    }
+
     debug!("new process data");
     let process = if flags.contains(CloneFlags::THREAD) {
         new_task
@@ -281,11 +326,9 @@ pub fn clone_task(
     warn!("child tid: {}", process.pid());
 
     let thread_data = ThreadData::new(process.data().unwrap());
-    /* TODO: child_tid
-     *if flags.contains(CloneFlags::CHILD_CLEARTID) {
-     *    thread_data.set_clear_child_tid(child_tid);
-     *}
-     */
+    if flags.contains(CloneFlags::CHILD_CLEARTID) {
+        thread_data.set_clear_child_tid(child_tid as usize);
+    }
 
     let thread = process.new_thread(tid).data(thread_data).build();
     add_thread_to_table(&thread);

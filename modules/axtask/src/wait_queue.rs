@@ -189,6 +189,18 @@ impl WaitQueue {
         }
     }
 
+    /// Wakes n tasks in the wait queue.
+    ///
+    /// If `resched` is true, the current task will be preempted when the
+    /// preemption is enabled.
+    pub fn notify_n(&self, n: usize, resched: bool) {
+        let mut n = n;
+        while self.notify_one(resched) && n > 0 {
+            n -= 1;
+            // loop until the n tasks are notified
+        }
+    }
+
     /// Wake up the given task in the wait queue.
     ///
     /// If `resched` is true, the current task will be preempted when the

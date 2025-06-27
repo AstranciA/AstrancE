@@ -4,7 +4,8 @@ use alloc::sync::Arc;
 //use arceos_posix_api::ctypes::{self, *};
 use axerrno::{LinuxError, LinuxResult, ax_err};
 use axhal::{arch::TrapFrame, time::monotonic_time};
-use axsignal::*;
+use axprocess::{Pid, Process, ProcessGroup, Thread};
+use axsignal::{siginfo::SigInfo, *};
 use axsync::Mutex;
 use axtask::{TaskExtRef, current, exit, yield_now};
 use linux_raw_sys::general::*;
@@ -13,11 +14,12 @@ use memory_addr::{VirtAddr, VirtAddrRange};
 use crate::{
     mm::trampoline_vaddr,
     ptr::{PtrWrapper, UserPtr},
-    task::{sys_exit, PROCESS_GROUP_TABLE},
+    task::{PROCESS_GROUP_TABLE, sys_exit},
 };
 
 use super::{
-    PROCESS_TABLE, ProcessData, THREAD_TABLE, time::TimeStat, time_stat_from_old_task,
+    PROCESS_TABLE, ProcessData, THREAD_TABLE, ThreadData, find_thread_in_group, get_process,
+    get_process_group, get_thread, processes, time::TimeStat, time_stat_from_old_task,
     time_stat_to_new_task, write_trapframe_to_kstack, yield_with_time_stat,
 };
 
@@ -137,24 +139,26 @@ pub(crate) fn sys_sigprocmask(
     Ok(0)
 }
 
-pub(crate) fn sys_kill(pid: c_int, sig: c_int) -> LinuxResult<isize> {
-    let sig = Signal::from_u32(sig as _).ok_or(LinuxError::EINVAL)?;
-    if pid > 0 {
-        let process = PROCESS_TABLE
-            .read()
-            .get(&(pid as _))
-            .ok_or(LinuxError::ESRCH)?;
-        let data: &ProcessData = process.data().ok_or_else(|| {
-            error!("Process {} has no data", pid);
-            LinuxError::EFAULT
-        })?;
-        data.send_signal(sig);
-    } else {
-        warn!("Not supported yet: pid: {:?}", pid);
-        return Err(LinuxError::EINVAL);
-    }
-    Ok(0)
-}
+/*
+ *pub(crate) fn sys_kill(pid: c_int, sig: c_int) -> LinuxResult<isize> {
+ *    let sig = Signal::from_u32(sig as _).ok_or(LinuxError::EINVAL)?;
+ *    if pid > 0 {
+ *        let process = PROCESS_TABLE
+ *            .read()
+ *            .get(&(pid as _))
+ *            .ok_or(LinuxError::ESRCH)?;
+ *        let data: &ProcessData = process.data().ok_or_else(|| {
+ *            error!("Process {} has no data", pid);
+ *            LinuxError::EFAULT
+ *        })?;
+ *        data.send_signal(sig);
+ *    } else {
+ *        warn!("Not supported yet: pid: {:?}", pid);
+ *        return Err(LinuxError::EINVAL);
+ *    }
+ *    Ok(0)
+ *}
+ */
 
 pub(crate) fn sys_sigtimedwait(
     sigset: *const sigset_t,
@@ -246,33 +250,214 @@ pub(crate) fn sys_rt_sigsuspend(
     }
 }
 
+/*
+ *pub(crate) fn handle_pending_signals(current_tf: &TrapFrame) {
+ *    let curr = current();
+ *    let mut sigctx = curr.task_ext().process_data().signal.lock();
+ *    if !sigctx.has_pending() {
+ *        return;
+ *    }
+ *    sigctx.set_current_stack(SignalStackType::Primary);
+ *    // unlock sigctx since handle_pending_signals might exit curr context
+ *    match axsignal::handle_pending_signals(&mut sigctx, current_tf, unsafe {
+ *        trampoline_vaddr(sigreturn_trampoline as usize).into()
+ *    }) {
+ *        Ok(Some((mut uctx, kstack_top))) => {
+ *            // 交换tf
+ *            unsafe { write_trapframe_to_kstack(curr.get_kernel_stack_top().unwrap(), &uctx.0) };
+ *        }
+ *        Ok(None) => {}
+ *        Err(_) => {}
+ *    };
+ *}
+ */
+
 pub(crate) fn handle_pending_signals(current_tf: &TrapFrame) {
     let curr = current();
-    let mut sigctx = curr.task_ext().process_data().signal.lock();
-    if !sigctx.has_pending() {
-        return;
-    }
-    sigctx.set_current_stack(SignalStackType::Primary);
-    // unlock sigctx since handle_pending_signals might exit curr context
-    match axsignal::handle_pending_signals(&mut sigctx, current_tf, unsafe {
-        trampoline_vaddr(sigreturn_trampoline as usize).into()
-    }) {
-        Ok(Some((mut uctx, kstack_top))) => {
-            // 交换tf
-            unsafe { write_trapframe_to_kstack(curr.get_kernel_stack_top().unwrap(), &uctx.0) };
+
+    // 首先检查进程级别的信号处理
+    let mut proc_sigctx = curr.task_ext().process_data().signal.lock();
+    if proc_sigctx.has_pending() {
+        warn!("a");
+        proc_sigctx.set_current_stack(SignalStackType::Primary);
+        match axsignal::handle_pending_signals(
+            &mut proc_sigctx,
+            current_tf,
+            unsafe { trampoline_vaddr(sigreturn_trampoline as usize).into() },
+            None,
+        ) {
+            Ok(Some((mut uctx, _kstack_top))) => {
+                // 交换tf
+                unsafe { write_trapframe_to_kstack(curr.get_kernel_stack_top().unwrap(), &uctx.0) };
+                return;
+            }
+            Ok(None) => {}
+            Err(_) => {}
         }
-        Ok(None) => {}
-        Err(_) => {}
-    };
+    }
+
+    // 然后检查线程级别的信号处理
+    let mut thread_sigctx = curr.task_ext().thread_data().signal().lock();
+    if thread_sigctx.has_pending() {
+        thread_sigctx.set_current_stack(SignalStackType::Primary);
+        match axsignal::handle_pending_signals(
+            &mut thread_sigctx,
+            current_tf,
+            unsafe { trampoline_vaddr(sigreturn_trampoline as usize).into() },
+            Some(&mut proc_sigctx),
+        )
+        .inspect_err(|e| warn!("{e:?}"))
+        {
+            Ok(Some((mut uctx, _kstack_top))) => {
+                warn!("123");
+                // 交换tf
+                unsafe { write_trapframe_to_kstack(curr.get_kernel_stack_top().unwrap(), &uctx.0) };
+                return;
+            }
+            Ok(None) => {}
+            Err(_) => {}
+        }
+    }
 }
 
 pub(crate) fn sys_sigreturn() -> LinuxResult<isize> {
     let curr = current();
-    let mut sigctx = curr.task_ext().process_data().signal.lock();
-    let (sscratch, mut tf) = sigctx.unload().unwrap();
+    trace!("sigreturn");
+    let (sscratch, mut tf) = {
+        let mut sigctx = curr.task_ext().process_data().signal.lock();
+        let mut t_sigctx = curr.task_ext().thread_data().signal.lock();
+        t_sigctx.unload().or(sigctx.unload()).expect("No sig frame loaded")
+    };
     // 交换回tf, 返回a0
     unsafe { write_trapframe_to_kstack(curr.get_kernel_stack_top().unwrap(), &tf) };
     unsafe { axhal::arch::exchange_trap_frame(sscratch) };
-    trace!("sigreturn");
     Ok(tf.arg0() as isize)
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum SigInfo_ {
+    Generic(SigCodeCommon),                     // pid, uid
+    Child(SigCodeSigChld, SigStatus, u64, u64), // pid, uid, status, utime, stime
+    MemoryAccess(VirtAddr),                     // addr
+    FPEError(VirtAddr),                         // addr
+    IllegalInstruction(VirtAddr),               // addr
+    BusError(VirtAddr),                         // addr
+    Realtime(i32, VirtAddr),                    // value, ptr
+    PollIO(i32, i64),                           // fd, band
+    SyscallError(usize, i32, u32),              // call_addr, syscall_num, arch
+    Simple(SigCode),
+}
+
+fn gen_siginfo(signo: Signal, data: SigInfo_) -> SigInfo {
+    let curr = current();
+    let current_pid = curr.task_ext().thread.process().pid() as i32;
+    let current_uid = 0; // 假设 uid 为 0，实际应从进程或用户管理中获取
+    match data {
+        SigInfo_::Generic(code) => SigInfo::new_generic(signo, code, current_pid, current_uid),
+        SigInfo_::Child(code, status, utime, stime) => {
+            SigInfo::new_child(signo, code, current_pid, current_uid, status, utime, stime)
+        }
+        //SigInfo_::MemoryAccess(addr) => SigInfo::new_memory_access(signo, code, addr),
+        //SigInfo_::FPEError(addr) => SigInfo::new_fpe_error(signo, code, addr),
+        //SigInfo_::IllegalInstruction(addr) => SigInfo::new_illegal_instruction(signo, code, addr),
+        //SigInfo_::BusError(addr) => SigInfo::new_bus_error(signo, code, addr),
+        //SigInfo_::Realtime(value, ptr) => SigInfo::new_realtime(signo, code, value, ptr),
+        //SigInfo_::PollIO(fd, band) => SigInfo::new_poll_io(signo, code, fd, band),
+        /*
+         *SigInfo_::SyscallError(call_addr, syscall_num, arch) => {
+         *    SigInfo::new_syscall_error(signo, code, call_addr, syscall_num, arch)
+         *}
+         */
+        SigInfo_::Simple(code) => SigInfo::new_simple(signo, code),
+        _ => todo!(),
+    }
+}
+
+/// Send a signal to a thread.
+/// helper function from starryx
+pub fn send_signal_thread(thr: &Thread, sig: Signal, info: SigInfo_) -> LinuxResult<()> {
+    info!("Send signal {:?} to thread {}", sig, thr.tid());
+    let Some(thr) = thr.data::<ThreadData>() else {
+        return Err(LinuxError::EPERM);
+    };
+    thr.send_signal(sig, Some(gen_siginfo(sig, info)));
+    Ok(())
+}
+
+/// Send a signal to a process.
+/// helper function from starryx
+pub fn send_signal_process(proc: &Process, sig: Signal, info: SigInfo_) -> LinuxResult<()> {
+    info!("Send signal {:?} to process {}", sig, proc.pid());
+    let Some(proc) = proc.data::<ProcessData>() else {
+        return Err(LinuxError::EPERM);
+    };
+    proc.send_signal(sig, Some(gen_siginfo(sig, info)));
+    Ok(())
+}
+
+/// Send a signal to a process group.
+/// helper function from starryx
+pub fn send_signal_process_group(pg: &ProcessGroup, sig: Signal, info: SigInfo_) -> usize {
+    info!("Send signal {:?} to process group {}", sig, pg.pgid());
+    let mut count = 0;
+    for proc in pg.processes() {
+        count += send_signal_process(&proc, sig.clone(), info).is_ok() as usize;
+    }
+    count
+}
+pub fn sys_kill(pid: c_int, signo: u32) -> LinuxResult<isize> {
+    let Some(sig) = Signal::from_u32(signo) else {
+        return Ok(0); // 信号无效
+    };
+    let info = SigInfo_::Generic(SigCodeCommon::SI_USER);
+    match pid {
+        1.. => {
+            // pid > 0: 发送信号给指定进程
+            let proc = get_process(pid as Pid)?;
+            send_signal_process(&proc, sig, info)?;
+            Ok(0) // 成功发送信号通常返回0
+        }
+        0 => {
+            // pid = 0: 发送信号给当前进程组中的所有进程
+            let pg = current().task_ext().thread.process().group();
+            send_signal_process_group(&pg, sig, info);
+            Ok(0)
+        }
+        -1 => {
+            // pid = -1: 发送信号给所有进程（除了init进程）
+            let mut count = 0;
+            for proc in processes() {
+                if proc.is_init() {
+                    continue;
+                }
+                send_signal_process(&proc, sig.clone(), info)?;
+                count += 1;
+            }
+            Ok(count as isize)
+        }
+        ..-1 => {
+            // pid < -1: 发送信号给指定进程组
+            let pg = get_process_group((-pid) as Pid)?;
+            Ok(send_signal_process_group(&pg, sig, info) as isize)
+        }
+    }
+}
+pub fn sys_tkill(tid: Pid, signo: u32) -> LinuxResult<isize> {
+    let Some(sig) = Signal::from_u32(signo) else {
+        warn!("{signo:?}");
+        return Ok(0); // 信号无效
+    };
+    let info = SigInfo_::Generic(SigCodeCommon::SI_USER);
+    warn!("{sig:?}");
+    let thr = get_thread(tid)?;
+    send_signal_thread(&thr, sig, info)?;
+    Ok(0)
+}
+pub fn sys_tgkill(tgid: Pid, tid: Pid, signo: u32) -> LinuxResult<isize> {
+    let Some(sig) = Signal::from_u32(signo) else {
+        return Ok(0); // 信号无效
+    };
+    let info = SigInfo_::Generic(SigCodeCommon::SI_USER);
+    send_signal_thread(find_thread_in_group(tgid, tid)?.as_ref(), sig, info)?;
+    Ok(0)
 }

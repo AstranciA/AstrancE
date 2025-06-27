@@ -2,7 +2,7 @@
 
 use ::alloc::sync::Arc;
 use axhal::paging::{MappingFlags, PageTable};
-use frame::{FrameTrackerImpl, FrameTrackerMap};
+pub use frame::{FrameTrackerImpl, FrameTrackerMap, FrameTrackerRef, FrameTrackerWeak, TrackedPhysAddr};
 use memory_addr::VirtAddr;
 use memory_set::MappingBackend;
 
