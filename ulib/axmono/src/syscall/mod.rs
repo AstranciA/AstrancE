@@ -25,6 +25,7 @@ use linux_raw_sys::general as linux;
 use memory_addr::MemoryAddr;
 use syscalls::Sysno;
 
+
 mod mm;
 mod pthread;
 
@@ -176,6 +177,8 @@ syscall_handler_def!(
             Ok(0)
         }
         futex => [uaddr, futex_op, val, timeout, uaddr2, val3, ..] {
+            error!("exit futex");
+            task::sys_exit(-1 as i32);
             // 调用 syscall/pthread.rs 中实现的 sys_futex
             pthread::sys_futex(uaddr, futex_op, val, timeout as isize, uaddr2, val3)
         }

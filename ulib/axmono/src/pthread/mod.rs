@@ -103,7 +103,6 @@ pub fn futex(
     flags: FutexFlags,
     timeout: Option<Duration>,
 ) -> LinuxResult {
-    warn!("123");
     // 假设你的内核有能力将用户虚拟地址转换为物理地址和 FrameTracker
     // 这是处理 FutexAddr::Phys 的关键步骤
     // TODO: 实现 vaddr 到 (FrameTracker, u32) 的转换

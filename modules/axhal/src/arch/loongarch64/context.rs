@@ -139,6 +139,11 @@ impl TrapFrame {
     }
 
     /// Gets the stack pointer.
+    pub const fn sp(&self) -> usize {
+        self.regs.sp
+    }
+
+    /// Gets the stack pointer.
     pub const fn get_sp(&self) -> usize {
         self.regs.sp
     }
