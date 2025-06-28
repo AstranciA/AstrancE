@@ -1214,6 +1214,7 @@ pub fn sys_unlinkat(dir_fd: i32, path: *const c_char) -> LinuxResult<isize> {
     }
     let dir: Arc<Directory> = Directory::from_fd(dir_fd)?;
     let path = char_ptr_to_str(path).map_err(|_| LinuxError::EFAULT)?;
+    warn!("sys_unlinkat <= {dir_fd} {:?}", path);
     dir.inner.lock().remove_file(path)?;
     Ok(0)
 }

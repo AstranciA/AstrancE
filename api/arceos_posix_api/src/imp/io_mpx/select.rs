@@ -9,13 +9,13 @@ const FD_SETSIZE: usize = 1024;
 const BITS_PER_USIZE: usize = usize::BITS as usize;
 const FD_SETSIZE_USIZES: usize = FD_SETSIZE.div_ceil(BITS_PER_USIZE);
 
-struct FdSets {
+pub struct FdSets {
     nfds: usize,
     bits: [usize; FD_SETSIZE_USIZES * 3],
 }
 
 impl FdSets {
-    fn from(
+    pub fn from(
         nfds: usize,
         read_fds: *const ctypes::fd_set,
         write_fds: *const ctypes::fd_set,
@@ -46,7 +46,7 @@ impl FdSets {
         Self { nfds, bits }
     }
 
-    fn poll_all(
+    pub fn poll_all(
         &self,
         res_read_fds: *mut ctypes::fd_set,
         res_write_fds: *mut ctypes::fd_set,
@@ -150,7 +150,9 @@ pub unsafe fn sys_select(
     })
 }
 
-unsafe fn zero_fd_set(fds: *mut ctypes::fd_set, nfds: usize) {
+
+
+pub unsafe fn zero_fd_set(fds: *mut ctypes::fd_set, nfds: usize) {
     if !fds.is_null() {
         let nfds_usizes = nfds.div_ceil(BITS_PER_USIZE);
         let dst = &mut unsafe { *fds }.fds_bits[..nfds_usizes];
@@ -158,7 +160,7 @@ unsafe fn zero_fd_set(fds: *mut ctypes::fd_set, nfds: usize) {
     }
 }
 
-unsafe fn set_fd_set(fds: *mut ctypes::fd_set, fd: usize) {
+pub unsafe fn set_fd_set(fds: *mut ctypes::fd_set, fd: usize) {
     if !fds.is_null() {
         unsafe { *fds }.fds_bits[fd / BITS_PER_USIZE] |= 1 << (fd % BITS_PER_USIZE);
     }

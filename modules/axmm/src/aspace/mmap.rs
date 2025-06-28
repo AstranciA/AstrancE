@@ -1,19 +1,20 @@
-use core::cmp::min;
-
 use alloc::sync::Arc;
 use axerrno::{AxError, AxResult, ax_err};
 use axhal::{
     mem::{MemoryAddr, phys_to_virt},
     paging::{MappingFlags, PageSize},
 };
+use axsync::Mutex;
 use bitflags::bitflags;
 use memory_addr::{PageIter4K, VirtAddr, addr_range, va};
-use memory_set::MemoryArea;
+use memory_set::MemoryArea; // <--- 引入 Mutex
 
 use crate::{
-    AddrSpace, Backend,
+    AddrSpace,
+    Backend,
     backend::{VmAreaType, alloc::alloc_frame},
     mapping_err_to_ax_err,
+    shm::ShmSegment, // <--- 引入 ShmSegment
 };
 
 const MMAP_END: VirtAddr = va!(0x4000_0000);
@@ -78,6 +79,7 @@ pub trait MmapIO: Send + Sync {
 
 /// TODO: 限制mmap大小
 impl AddrSpace {
+    // Existing mmap function for MmapIO
     pub fn mmap(
         &mut self,
         start: VirtAddr,
@@ -87,50 +89,13 @@ impl AddrSpace {
         mmap_io: Arc<dyn MmapIO>,
         populate: bool,
     ) -> AxResult<VirtAddr> {
-        assert!(start.is_aligned_4k());
-        assert!(size % 4096 == 0);
+        debug_assert!(start.is_aligned_4k());
+        debug_assert!(size % 4096 == 0);
 
-        let start = if flags.contains(MmapFlags::MAP_FIXED) {
-            // TODO: check if it's USER
-            self.unmap(start, size)?;
-            start
-        } else if flags.contains(MmapFlags::MAP_FIXED_NOREPLACE) {
-            start
-        } else {
-            let start = if start.as_usize() == 0 {
-                va!(0x1000)
-            } else {
-                start
-            };
-            #[cfg(feature = "heap")]
-            {
-                // should below heap
-                let heap_start = self
-                    .heap
-                    .as_ref()
-                    .map(|h| h.base())
-                    .unwrap_or(MMAP_END)
-                    .into();
-                self.find_free_area(
-                    start.into(),
-                    size,
-                    addr_range!(self.base().as_usize()..heap_start),
-                )
-                .expect("Cannot find free area for mmap")
-            }
-            #[cfg(not(feature = "heap"))]
-            {
-                self.find_free_area(
-                    start.into(),
-                    size,
-                    addr_range!(self.base().as_usize()..MMAP_END.into()),
-                )
-                .expect("Cannot find free area for mmap")
-            }
-        };
+        let start = self.find_and_prepare_vaddr(start, size, flags)?;
 
         let mut map_flags: MappingFlags = perm.into();
-        map_flags = map_flags | MappingFlags::DEVICE;
+        map_flags = map_flags | MappingFlags::DEVICE; // Assuming MmapIO is device-like
         debug!(
             "mmap at: [{:#x}, {:#x}), {map_flags:?}",
             start,
@@ -155,6 +120,100 @@ impl AddrSpace {
             .insert(area, false)
             .map_err(mapping_err_to_ax_err)?;
         Ok(start)
+    }
+
+    // New function for SHM mmap
+    pub fn shm_mmap(
+        &mut self,
+        start: VirtAddr,
+        size: usize,
+        perm: MmapPerm,
+        flags: MmapFlags,
+        shm_segment: Arc<Mutex<ShmSegment>>, // Pass the ShmSegment directly
+        populate: bool,
+    ) -> AxResult<VirtAddr> {
+        debug_assert!(start.is_aligned_4k());
+        debug_assert!(size % 4096 == 0);
+
+        let start = self.find_and_prepare_vaddr(start, size, flags)?;
+
+        let map_flags: MappingFlags = perm.into();
+        debug!(
+            "shm_mmap at: [{:#x}, {:#x}), {map_flags:?}",
+            start,
+            start + size
+        );
+
+        let area = MemoryArea::new_mmap(
+            start,
+            size.align_up_4k(),
+            None,
+            map_flags,
+            Backend::new(populate, VmAreaType::Shm(shm_segment.clone())), // Use Shm VmAreaType
+        );
+
+        self.areas
+            .insert(area, false)
+            .map_err(mapping_err_to_ax_err)?;
+
+        // For SHM, `populate` means mapping the existing physical pages.
+        // The `shm_segment` already holds the `FrameTrackerRef`s.
+        if populate {
+            self.populate_shm(shm_segment.clone(), start, size, map_flags).inspect_err(|e|warn!("{e:?}"))?;
+        }
+
+        // Increment attach_count when successfully mapped
+        shm_segment.lock().attach_count += 1;
+
+        Ok(start)
+    }
+
+    // Helper to find and prepare virtual address
+    fn find_and_prepare_vaddr(
+        &mut self,
+        start: VirtAddr,
+        size: usize,
+        flags: MmapFlags,
+    ) -> AxResult<VirtAddr> {
+        let actual_start = if flags.contains(MmapFlags::MAP_FIXED) {
+            // TODO: check if it's USER
+            self.unmap(start, size)?;
+            start
+        } else if flags.contains(MmapFlags::MAP_FIXED_NOREPLACE) {
+            start
+        } else {
+            let search_start = if start.as_usize() == 0 {
+                va!(0x1000)
+            } else {
+                start
+            };
+            #[cfg(feature = "heap")]
+            {
+                // should below heap
+                let heap_start = self
+                    .heap
+                    .as_ref()
+                    .map(|h| h.base())
+                    .unwrap_or(MMAP_END)
+                    .into();
+                self.find_free_area(
+                    search_start.into(),
+                    size,
+                    addr_range!(self.base().as_usize()..heap_start),
+                )
+                .expect("Cannot find free area for mmap")
+            }
+            #[cfg(not(feature = "heap"))]
+            {
+                self.find_free_area(
+                    start.into(),
+                    size,
+                    addr_range!(self.base().as_usize()..MMAP_END.into()),
+                )
+                .expect("Cannot find free area for mmap")
+            }
+        };
+        Ok(actual_start)
     }
 
     pub fn populate_mmap(
@@ -194,39 +253,88 @@ impl AddrSpace {
             Err(AxError::NoMemory)
         }
     }
+
+    // New function to populate SHM pages
+    pub fn populate_shm(
+        &mut self,
+        shm_segment: Arc<Mutex<ShmSegment>>,
+        start_vaddr: VirtAddr,
+        total_size: usize,
+        flags: MappingFlags,
+    ) -> AxResult {
+        let shm_segment_locked = shm_segment.lock();
+        let segment_pages = &shm_segment_locked.pages;
+        let num_pages = total_size / PageSize::Size4K as usize;
+
+        if num_pages > segment_pages.len() {
+            return ax_err!(InvalidInput, "SHM segment too small for requested size");
+        }
+
+        let area = self
+            .areas
+            .find_mut(start_vaddr)
+            .ok_or(AxError::BadAddress)?;
+
+        for i in 0..num_pages {
+            let vaddr = start_vaddr + i * PageSize::Size4K as usize;
+            let frame = segment_pages[i].clone(); // Get the pre-allocated frame from ShmSegment
+
+            debug!(
+                "Populating SHM: {:?}->{:?}, area:{:?}..{:?}, flags: {:?}",
+                vaddr,
+                frame.pa,
+                area.start(),
+                area.end(),
+                flags
+            );
+
+            area.insert_frame(vaddr, frame.clone()); // Add to MemoryArea's frame tracking
+
+            self.pt
+                .map(vaddr, frame.pa, PageSize::Size4K, flags)
+                .inspect_err(|e| warn!("Error mapping SHM: {:?}", e))
+                .map(|tlb| tlb.flush())
+                .map_err(|_| AxError::BadAddress)?;
+        }
+        Ok(())
+    }
+
     pub fn munmap(&mut self, start: VirtAddr, size: usize) -> AxResult {
         // TODO: is it correct?
-        let mut start = start;
-        let mut size = size.align_up_4k();
+        let size = size.align_up_4k();
         let end = start + size;
-        while let area = match self.areas.find_mut(start) {
+        let area = match self.areas.find_mut(start) {
             Some(area) => area,
             None => return Ok(()),
-        } {
-            size = min(size, area.end() - start);
-            let end = start + size;
-
-            let _mmap_io = if let Backend::Alloc { va_type, populate } = area.backend() {
-                if let VmAreaType::Mmap(mmap_io) = va_type {
-                    Ok(mmap_io)
-                } else {
-                    Err(AxError::InvalidInput)
-                }
-            } else {
-                Err(AxError::InvalidInput)
-            }?;
-
-            area.unmap_frames(start, size, &mut self.pt).unwrap();
-            let is_empty = area.frames_count() == 0;
-            let area_start = area.start();
-            if is_empty {
-                self.unmap_area(area_start);
-            }
-            start = end;
-        }
-        if size > 0 {
-            error!("[{:#x}, {:#x}) out of range", start, end);
+        };
+        if area.end() < end {
+            error!(
+                "[{:#x}, {:#x}) out of range [{:#x}, {:#x})",
+                start,
+                end,
+                area.start(),
+                area.end()
+            );
             return ax_err!(BadAddress, "munmap end out of range");
+        }
+
+        let is_shm = if let Backend::Alloc { va_type, .. } = area.backend() {
+            if let VmAreaType::Shm(shm_segment) = va_type {
+                // Decrement attach_count when unmapped
+                shm_segment.lock().attach_count -= 1;
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        area.unmap_frames(start, size, &mut self.pt).unwrap();
+        let is_empty = area.frames_count() == 0;
+        let area_start = area.start();
+        if is_empty {
+            self.unmap_area(area_start);
         }
 
         Ok(())

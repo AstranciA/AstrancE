@@ -566,6 +566,7 @@ impl VfsNodeOps for FileWrapper {
 
         file.file_seek(offset as i64, SEEK_SET)
             .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
+
         let r = file.file_read(buf);
 
         let _ = file.file_close();

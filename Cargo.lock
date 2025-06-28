@@ -544,6 +544,7 @@ dependencies = [
  "axconfig",
  "axerrno",
  "axhal",
+ "axsync",
  "bitflags 2.9.0",
  "kspin",
  "lazyinit",
@@ -558,6 +559,7 @@ name = "axmono"
 version = "0.1.0"
 dependencies = [
  "arceos_posix_api",
+ "axalloc",
  "axconfig",
  "axerrno",
  "axfeat",

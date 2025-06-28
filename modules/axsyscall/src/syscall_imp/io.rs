@@ -14,7 +14,6 @@ pub fn sys_readv(fd: c_int, iov: *const ctypes::iovec, iocnt: c_int) -> SyscallR
     unsafe { api::sys_readv(fd, iov, iocnt).to_linux_result() }
 }
 
-
 #[inline]
 pub fn sys_write(fd: usize, buf: &[u8]) -> SyscallResult {
     api::sys_write(fd as i32, buf.as_ptr() as *mut c_void, buf.len()).to_linux_result()

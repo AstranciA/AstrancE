@@ -16,6 +16,7 @@ heap = []
 mmap = ["memory_set/mmap"]
 
 [dependencies]
+axsync = { workspace = true }
 axhal = { workspace = true, features = ["paging"] }
 axalloc = { workspace = true }
 axconfig = { workspace = true }

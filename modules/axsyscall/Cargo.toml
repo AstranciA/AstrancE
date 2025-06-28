@@ -19,7 +19,7 @@ pipe = ["arceos_posix_api/pipe"]
 multitask = ["arceos_posix_api/multitask"]
 [dependencies]
 syscalls = { workspace = true }
-arceos_posix_api = { workspace = true }
+arceos_posix_api = { workspace = true, features = ["select"]}
 axerrno = "0.1"
 axhal = { workspace = true }
 axtask = { workspace = true }

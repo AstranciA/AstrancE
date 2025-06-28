@@ -59,7 +59,6 @@ pub fn sys_uname(buf: *mut UtsName) -> c_long {
     unsafe {
         str_to_cstr(SYSINFO.sysname, (*buf).sysname.as_mut_ptr());
         str_to_cstr(SYSINFO.sysname, (*buf).domainname.as_mut_ptr());
-        error!("sys_uname <= {:?}", SYSINFO.sysname.as_bytes());
         str_to_cstr(SYSINFO.nodename, (*buf).nodename.as_mut_ptr());
         str_to_cstr(SYSINFO.release, (*buf).release.as_mut_ptr());
         str_to_cstr(SYSINFO.version, (*buf).version.as_mut_ptr());

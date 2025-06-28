@@ -25,7 +25,8 @@ use linux_raw_sys::general as linux;
 use memory_addr::MemoryAddr;
 use syscalls::Sysno;
 
-
+mod io;
+mod ipc;
 mod mm;
 mod pthread;
 
@@ -181,6 +182,50 @@ syscall_handler_def!(
             task::sys_exit(-1 as i32);
             // 调用 syscall/pthread.rs 中实现的 sys_futex
             pthread::sys_futex(uaddr, futex_op, val, timeout as isize, uaddr2, val3)
+        }
+
+
+        // System V IPC Shared Memory System Calls
+        // shmget(key, size, shmflg)
+        shmget => [key, size, shmflg, ..] {
+            apply!(ipc::sys_shmget, key, size, shmflg)
+        }
+
+        // shmat(shmid, shmaddr, shmflg)
+        shmat => [shmid, shmaddr, shmflg, ..] {
+            // shmid: c_int (i32)
+            // shmaddr: *const c_void (usize -> *const c_void)
+            // shmflg: c_int (i32)
+            // 注意：shmaddr 是一个裸指针，需要从 usize 转换
+            let shmaddr_ptr: *const c_void = shmaddr as *const c_void;
+            apply!(ipc::sys_shmat, shmid, shmaddr_ptr, shmflg)
+        }
+
+        // shmdt(shmaddr)
+        shmdt => [shmaddr, ..] {
+            // shmaddr: *const c_void (usize -> *const c_void)
+            let shmaddr_ptr: *const c_void = shmaddr as *const c_void;
+            apply!(ipc::sys_shmdt, shmaddr_ptr)
+        }
+
+        // shmctl(shmid, cmd, buf)
+        shmctl => [shmid, cmd, buf, ..] {
+            // shmid: c_int (i32)
+            // cmd: c_int (i32)
+            // buf: *mut c_void (usize -> *mut c_void)
+            // 注意：buf 是一个裸指针，需要从 usize 转换
+            let buf_ptr: *mut c_void = buf as *mut c_void;
+            apply!(ipc::sys_shmctl, shmid, cmd, buf_ptr)
+        }
+
+        pselect6 => [nfds, readfds, writefds, exceptfds, timeout, sigmask] {
+            // 因为 sys_pselect 内部可能需要裸指针操作，所以这里也需要 unsafe
+            unsafe {
+                apply!(
+                    io::sys_pselect,
+                    nfds, readfds, writefds, exceptfds, timeout, sigmask
+                )
+            }
         }
 );
 

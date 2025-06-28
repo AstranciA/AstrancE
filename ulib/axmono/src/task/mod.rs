@@ -150,6 +150,7 @@ pub fn spawn_user_task_inner(exe_path: &str, uctx: UspaceContext, pwd: String, c
                 kstack_top,
             );
             // FIXME:
+            warn!("pwd: {pwd:?}");
             set_current_dir(pwd.as_str()).unwrap();
             unsafe { uctx.enter_uspace(kstack_top) };
         },

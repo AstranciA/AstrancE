@@ -7,9 +7,10 @@ extern crate log;
 extern crate alloc;
 
 pub(crate) mod aspace;
-mod backend;
+pub mod backend;
 #[cfg(feature = "heap")]
 pub mod heap;
+pub mod shm;
 
 pub use self::aspace::AddrSpace;
 pub use self::backend::{
@@ -17,6 +18,7 @@ pub use self::backend::{
     TrackedPhysAddr,
 };
 pub use aspace::mmap::{MmapFlags, MmapIO, MmapPerm};
+pub use shm::{shm_get, shm_at, shm_dt, shm_ctl, ShmError, ShmSegment, IPC_PRIVATE, IPC_CREAT, IPC_EXCL, IPC_RMID};
 
 use axerrno::{AxError, AxResult};
 use axhal::mem::phys_to_virt;

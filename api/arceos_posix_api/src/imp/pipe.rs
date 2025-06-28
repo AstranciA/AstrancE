@@ -143,7 +143,8 @@ impl FileLike for Pipe {
             // 如果缓冲区已空，检查是否需要返回
             if ring_buffer.available_read() == 0 {
                 if read_size > 0 || self.write_end_close() {
-                    warn!("buffer empty, returning {read_size}");
+                    warn!("buffer empty, reading {read_size} in total");
+                    warn!("{buf:?}");
                     return Ok(read_size);
                 }
             }

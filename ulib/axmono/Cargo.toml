@@ -25,9 +25,10 @@ page_table_entry = { workspace = true }
 page_table_multiarch = { workspace = true }
 axfeat = { workspace = true, features = ["tls"] }
 axconfig = { workspace = true }
+axalloc = { workspace = true }
 axhal = { workspace = true }
 axlog = { workspace = true }
-arceos_posix_api = { workspace = true, features = ["uspace"] }
+arceos_posix_api = { workspace = true, features = ["uspace", "select"] }
 axfs = { workspace = true, features = ["dyn"] }
 axmm = { workspace = true, optional = true }
 axtask = { workspace = true, optional = true }

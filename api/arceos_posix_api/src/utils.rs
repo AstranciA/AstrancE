@@ -55,6 +55,8 @@ pub fn check_null_mut_ptr<T>(ptr: *mut T) -> LinuxResult {
         Ok(())
     }
 }
+
+#[macro_export]
 macro_rules! syscall_body {
     ($fn: ident, $($stmt: tt)*) => {{
         #[allow(clippy::redundant_closure_call)]
@@ -71,6 +73,8 @@ macro_rules! syscall_body {
         }
     }};
 }
+
+#[macro_export]
 macro_rules! syscall_body_no_debug {
     ($($stmt: tt)*) => {{
         #[allow(clippy::redundant_closure_call)]

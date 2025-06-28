@@ -10,18 +10,18 @@ use syscall_imp::{
     sys::sys_uname,
 };
 mod syscall_imp;
-use arceos_posix_api::{ctypes, sys_listxattr, sys_pread64, sys_pwrite64};
 use arceos_posix_api::ctypes::{pid_t, timespec, timeval};
+use arceos_posix_api::{ctypes, sys_listxattr, sys_pread64, sys_pwrite64};
+use axlog::debug;
 use core::ffi::*;
 use core::ptr;
 use syscalls::Sysno::gettimeofday;
-use axlog::debug;
 
 pub mod result;
 use crate::syscall_imp::fs::{sys_flistxattr, sys_fsetxattr, sys_utimesat};
-pub use result::{SyscallResult, ToLinuxResult};
 use crate::syscall_imp::io::sys_write;
 use crate::syscall_imp::time::sys_get_time_of_day;
+pub use result::{SyscallResult, ToLinuxResult};
 
 #[macro_export]
 macro_rules! syscall_handler_def {
@@ -151,7 +151,7 @@ syscall_handler_def!(
         fstat => [fd, buf, ..] {
             unsafe { apply!(syscall_imp::fs::sys_fstat, fd, buf) }
         }
-        
+
         statx => [dirfd, path, flags, mask, buf, ..]{
             unsafe{apply!(syscall_imp::fs::sys_statx, dirfd, path, flags, mask, buf)}
         }
@@ -160,7 +160,7 @@ syscall_handler_def!(
         fstatat => [dir_fd, pathname, buf, flags, ..] {
             unsafe { apply!(syscall_imp::fs::sys_fstatat, dir_fd, pathname, buf, flags) }
         }
-    
+
         #[cfg(all(feature = "fs", feature = "fd"))]
         lseek => [fd, offset, whence, ..] {
             apply!(syscall_imp::fs::sys_lseek, fd, offset, whence)
@@ -355,5 +355,14 @@ syscall_handler_def!(
         // fd, addr, addrlen
         getpeername => [fd, addr, addrlen, ..] {
             unsafe { apply!(syscall_imp::net::sys_getpeername, fd, addr, addrlen) }
+        }
+        sched_getaffinity => _ {
+            Ok(0)
+        }
+        fchown => _ {
+            Ok(0)
+        }
+        fchownat => _ {
+            Ok(0)
         }
 );

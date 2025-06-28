@@ -2,38 +2,39 @@
 
 use ::alloc::sync::Arc;
 use axhal::paging::{MappingFlags, PageTable};
-pub use frame::{FrameTrackerImpl, FrameTrackerMap, FrameTrackerRef, FrameTrackerWeak, TrackedPhysAddr};
+use axsync::Mutex;
 use memory_addr::VirtAddr;
 use memory_set::MappingBackend;
 
-use crate::{AddrSpace, aspace::mmap::MmapIO};
+use crate::{AddrSpace, aspace::mmap::MmapIO, shm::ShmSegment};
 
 pub(super) mod alloc;
 pub mod frame;
+pub use frame::*;
 mod linear;
 
 /// A unified enum type for different memory mapping backends.
 ///
 /// Currently, two backends are implemented:
 ///
-/// - **Linear**: used for linear mappings. The target physical frames are
+/// - Linear: used for linear mappings. The target physical frames are
 ///   contiguous and their addresses should be known when creating the mapping.
-/// - **Allocation**: used in general, or for lazy mappings. The target physical
+/// - Allocation: used in general, or for lazy mappings. The target physical
 ///   frames are obtained from the global allocator.
 #[derive(Clone)]
 pub enum Backend {
     /// Linear mapping backend.
     ///
     /// The offset between the virtual address and the physical address is
-    /// constant, which is specified by `pa_va_offset`. For example, the virtual
-    /// address `vaddr` is mapped to the physical address `vaddr - pa_va_offset`.
+    /// constant, which is specified by pa_va_offset. For example, the virtual
+    /// address vaddr is mapped to the physical address vaddr - pa_va_offset.
     Linear {
-        /// `vaddr - paddr`.
+        /// vaddr - paddr.
         pa_va_offset: usize,
     },
     /// Allocation mapping backend.
     ///
-    /// If `populate` is `true`, all physical frames are allocated when the
+    /// If populate is true, all physical frames are allocated when the
     /// mapping is created, and no page faults are triggered during the memory
     /// access. Otherwise, the physical frames are allocated on demand (by
     /// handling page faults).
@@ -102,8 +103,20 @@ impl Backend {
         match self {
             Self::Linear { .. } => false, // Linear mappings should not trigger page faults.
             Self::Alloc { populate, va_type } => {
-                Self::handle_page_fault_alloc(vaddr, va_type.clone(), orig_flags, aspace, *populate)
+                let populate = if !populate {
+                    aspace.pt.query(vaddr).is_ok()
+                } else {
+                    *populate
+                };
+                Self::handle_page_fault_alloc(vaddr, va_type.clone(), orig_flags, aspace, populate)
             }
+        }
+    }
+
+    pub fn get_vm_type(&self) -> Option<VmAreaType> {
+        match self {
+            Self::Linear { .. } => None,
+            Self::Alloc { va_type, .. } => Some(va_type.clone()),
         }
     }
 }
@@ -115,4 +128,5 @@ pub enum VmAreaType {
     Heap,
     Stack,
     Mmap(Arc<dyn MmapIO>),
+    Shm(Arc<Mutex<ShmSegment>>),
 }

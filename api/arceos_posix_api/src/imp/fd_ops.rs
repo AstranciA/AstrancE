@@ -1,25 +1,29 @@
+use crate::ctype_my::statx;
+use crate::ctypes;
+use crate::imp::stdio::{stdin, stdout};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use axtask::yield_now;
-use core::ffi::{c_char, c_int, c_short, c_void};
-use core::time::Duration;
-use spin::Mutex;
-use crate::ctypes;
-use crate::ctype_my::statx;
-use crate::imp::stdio::{stdin, stdout};
 use axerrno::{LinuxError, LinuxResult, ax_err};
 use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsResult};
 use axio::PollState;
 use axns::{ResArc, def_resource};
+use axtask::yield_now;
+use core::ffi::{c_char, c_int, c_short, c_void};
+use core::time::Duration;
 use flatten_objects::FlattenObjects;
-use spin::{RwLock, Once};
+use spin::Mutex;
+use spin::{Once, RwLock};
 
 pub const AX_FILE_LIMIT: usize = 1024;
 
 static FILE_LIMIT: Mutex<(usize, usize)> = Mutex::new((AX_FILE_LIMIT, AX_FILE_LIMIT));
 
-pub fn get_file_limit() -> usize { FILE_LIMIT.lock().0 }
-pub fn get_file_limit_max() -> usize { FILE_LIMIT.lock().1 }
+pub fn get_file_limit() -> usize {
+    FILE_LIMIT.lock().0
+}
+pub fn get_file_limit_max() -> usize {
+    FILE_LIMIT.lock().1
+}
 
 pub fn set_file_limit(new_cur: usize, new_max: usize) -> Result<(), LinuxError> {
     if new_cur > new_max || new_cur < 1 || new_max < 1 {
@@ -40,8 +44,8 @@ pub trait FileLike: Send + Sync {
     fn read(&self, buf: &mut [u8]) -> LinuxResult<usize>;
     fn write(&self, buf: &[u8]) -> LinuxResult<usize>;
     fn stat(&self) -> LinuxResult<ctypes::stat>;
-    fn statx(&self) ->LinuxResult<statx>{
-       Err(LinuxError::EOPNOTSUPP)
+    fn statx(&self) -> LinuxResult<statx> {
+        Err(LinuxError::EOPNOTSUPP)
     }
 
     fn read_at(&self, _buf: &mut [u8], _offset: u64) -> LinuxResult<usize> {
@@ -119,6 +123,14 @@ impl FD_TABLE {
         }
         RwLock::new(new_table)
     }
+
+    pub fn clear(&self) {
+        let mut table = self.write();
+        let ids: Vec<_> = table.ids().collect();
+        for i in ids {
+            table.remove(i).unwrap();
+        }
+    }
 }
 
 /// Get the current number of open file descriptors
@@ -137,7 +149,7 @@ pub fn get_file_like(fd: c_int) -> LinuxResult<Arc<dyn FileLike>> {
 
 /// Add a file to the file descriptor table.
 pub fn add_file_like(f: Arc<dyn FileLike>) -> LinuxResult<c_int> {
-    if current_fd_count() >= get_file_limit(){
+    if current_fd_count() >= get_file_limit() {
         return Err(LinuxError::EMFILE);
     }
     Ok(FD_TABLE.write().add(f).map_err(|_| LinuxError::EMFILE)? as c_int)

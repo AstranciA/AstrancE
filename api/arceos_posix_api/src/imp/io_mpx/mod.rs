@@ -13,4 +13,4 @@ mod select;
 #[cfg(feature = "epoll")]
 pub use self::epoll::{sys_epoll_create, sys_epoll_ctl, sys_epoll_wait};
 #[cfg(feature = "select")]
-pub use self::select::sys_select;
+pub use self::select::{sys_select, FdSets, zero_fd_set, set_fd_set};

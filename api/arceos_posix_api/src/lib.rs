@@ -36,26 +36,27 @@ pub mod ctypes;
 
 pub use imp::io::{sys_read, sys_readv, sys_write, sys_writev};
 #[cfg(feature = "fs")]
-pub use imp::path_link::{handle_file_path, FilePath, AT_FDCWD, HARDLINK_MANAGER};
+pub use imp::path_link::{AT_FDCWD, FilePath, HARDLINK_MANAGER, handle_file_path};
 pub use imp::resources::{sys_getrlimit, sys_prlimit64, sys_setrlimit};
-pub use imp::sys::{sys_sysconf, sys_uname, UtsName};
+pub use imp::sys::{UtsName, sys_sysconf, sys_uname};
 pub use imp::task::{sys_exit, sys_getpid, sys_sched_yield};
 pub use imp::time::{sys_clock_gettime, sys_get_time_of_day, sys_nanosleep};
 
 #[cfg(feature = "fd")]
 pub use imp::fd_ops::{
-    add_file_like, get_file_like, ps2event, sys_close, sys_dup, sys_dup2, sys_fcntl, sys_ppoll,
-    FileLike, FD_TABLE,
+    FD_TABLE, FileLike, add_file_like, get_file_like, ps2event, sys_close, sys_dup, sys_dup2,
+    sys_fcntl, sys_ppoll,
 };
 //#[cfg(feature = "fs")]
 pub use imp::fs::{
-    add_file_or_directory_fd, sys_fgetxattr, sys_fremovexattr, sys_fsetxattr, sys_fstat, sys_fstatat,
-    sys_getcwd, sys_getdents, sys_listxattr, sys_lseek, sys_lstat, sys_mkdirat, sys_mount,
-    sys_open, sys_openat, sys_pread64, sys_pwrite64, sys_rename, sys_stat, sys_statfs, sys_statx,
-    sys_umount2, sys_unlink, sys_unlinkat, sys_utimensat, Directory, File, sys_renameat
+    Directory, File, add_file_or_directory_fd, sys_fgetxattr, sys_fremovexattr, sys_fsetxattr,
+    sys_fstat, sys_fstatat, sys_getcwd, sys_getdents, sys_listxattr, sys_lseek, sys_lstat,
+    sys_mkdirat, sys_mount, sys_open, sys_openat, sys_pread64, sys_pwrite64, sys_rename,
+    sys_renameat, sys_stat, sys_statfs, sys_statx, sys_umount2, sys_unlink, sys_unlinkat,
+    sys_utimensat,
 };
 #[cfg(feature = "select")]
-pub use imp::io_mpx::sys_select;
+pub use imp::io_mpx::{FdSets, set_fd_set, sys_select, zero_fd_set};
 #[cfg(feature = "epoll")]
 pub use imp::io_mpx::{sys_epoll_create, sys_epoll_ctl, sys_epoll_wait};
 #[cfg(feature = "net")]

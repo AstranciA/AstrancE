@@ -1,7 +1,8 @@
+use arceos_posix_api::FD_TABLE;
 use axprocess::Pid;
 use axsignal::{SigCode, SigCodeSigChld, SigStatus, Signal, SignalSet};
 //use axsignal::{SignalInfo, Signo};
-use crate::task::{ProcessData, SigInfo_, send_signal_process};
+use crate::task::{process, send_signal_process, ProcessData, SigInfo_};
 use axtask::{TaskExtRef, current};
 use linux_raw_sys::general::SI_KERNEL;
 
@@ -50,6 +51,7 @@ pub fn do_exit(exit_code: i32, group_exit: bool) -> ! {
 
         process.exit();
         // TODO: clear namespace resources
+        FD_TABLE.clear();
     }
     if group_exit && !process.is_group_exited() {
         process.group_exit();

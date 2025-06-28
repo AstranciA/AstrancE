@@ -229,6 +229,7 @@ pub(crate) fn sys_rt_sigsuspend(
         let mask_ref = mask_ptr.as_ref().ok_or(LinuxError::EFAULT)?;
         (*mask_ref).into()
     };
+
     // 3. 获取当前进程和信号上下文
     let curr = current();
     let mut sigctx = curr.task_ext().process_data().signal.lock();
