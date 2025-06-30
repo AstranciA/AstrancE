@@ -11,7 +11,7 @@ keywords.workspace = true
 categories.workspace = true
 [features]
 default = ["basic_impl"]
-basic_impl = []
+basic_impl = ["fs", "fd", "pipe", "multitask"]
 fs = ["arceos_posix_api/fs", "dep:axfs"]
 fd = ["arceos_posix_api/fd"]
 net = ["arceos_posix_api/net"]

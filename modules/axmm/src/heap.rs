@@ -89,6 +89,7 @@ impl AddrSpace {
         debug!("setting heap top from {:?} to {:?}", heap.top(), top);
         if top != self.heap().top() {
             self.heap().set_heap_top(top);
+            // TODO: wrong flags if area is taken place by mmap!!!
             self.areas
                 .adjust_area(
                     heap.base(),

@@ -7,7 +7,7 @@ use arceos_posix_api::{add_file_or_directory_fd, sys_open};
 use axerrno::AxResult;
 use axfs::api::{current_dir, write};
 use axfs::fops::OpenOptions;
-use axfs::path::join;
+use axfs::path::{canonicalize, join};
 use axhal::trap::{PAGE_FAULT, register_trap_handler};
 use axhal::{
     mem::{VirtAddr, virt_to_phys},
@@ -23,6 +23,7 @@ use xmas_elf::ElfFile;
 use crate::dynamic::{find_interpreter, load_interpreter, relocate_interpreter_segments};
 use crate::elf::{check_segments_overlap, find_safe_base_address, get_program_address_range};
 use crate::task::{self, read_trapframe_from_kstack};
+use crate::utils::get_pwd_from_envs;
 use crate::{
     copy_from_kernel,
     elf::{ELFInfo, OwnedElfFile},
@@ -251,11 +252,29 @@ fn map_elf_sections_with_auxv(
 ) -> Result<(VirtAddr, VirtAddr, Option<VirtAddr>), axerrno::AxError> {
     let mut tp: Option<VirtAddr> = None;
     let mut args_ = vec![interp_info.path()];
+    warn!("{args_:?} {args:?}");
     args.map(|args| {
-        let path = if args[0].contains("/") {
+        let path = if args[0].starts_with("/") {
             args[0].clone()
-         } else {
-            join(current_dir().unwrap().as_str(), &[args[0].as_str()])
+        } else {
+            let pwd = if let Some(envs) = envs {
+                get_pwd_from_envs(envs)
+                    .1
+                    .or(if let Ok(pwd) = current_dir() {
+                        Some(pwd)
+                    } else {
+                        None
+                    })
+            } else if let Ok(pwd) = current_dir() {
+                Some(pwd)
+            } else {
+                None
+            };
+            if let Some(pwd) = pwd {
+                canonicalize(args[0].as_str(), Some(pwd.as_str()))
+            } else {
+                args[0].clone()
+            }
         };
         args_.push(path);
         args_.extend_from_slice(&args[1..])
