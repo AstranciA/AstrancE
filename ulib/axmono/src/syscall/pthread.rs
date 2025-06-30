@@ -1,10 +1,9 @@
-use core::time::Duration;
+use core::{isize, time::Duration};
 
 use crate::pthread::{FutexFlags, FutexOp, futex};
 use arceos_posix_api::ctypes;
 // 导入 futex 函数和 FutexOp 枚举
 use axerrno::{LinuxError, LinuxResult};
-use axsyscall::SyscallResult;
 use bitflags::Flags;
 use memory_addr::VirtAddr;
 
@@ -18,7 +17,7 @@ pub fn sys_futex(
     timeout_ptr: isize, // 指向 timespec 结构体
     _uaddr2: usize,
     _val3: usize,
-) -> SyscallResult {
+) -> LinuxResult<isize> {
     let vaddr = VirtAddr::from(uaddr);
     let flags = FutexFlags::from_bits_truncate(futex_op);
     let op = FutexOp::try_from(futex_op)?;
@@ -37,7 +36,7 @@ pub fn sys_futex(
 }
 
 // 示例的 sys_pthread 函数，如果不需要可以删除或修改
-pub fn sys_pthread(_arg: usize) -> SyscallResult {
+pub fn sys_pthread(_arg: usize) -> LinuxResult<isize> {
     // 这是一个占位符，如果你的 pthread 系统调用有其他功能，可以在这里实现
     Err(LinuxError::ENOSYS) // Not implemented
 }

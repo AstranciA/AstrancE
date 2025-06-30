@@ -35,7 +35,7 @@ axtask = { workspace = true, optional = true }
 axsync = { workspace = true }
 axns = { workspace = true, optional = true }
 axsignal = { workspace = true, optional = true }
-axsyscall = { workspace = true, features = ["fd", "fs", "pipe", "multitask"] }
+#axsyscall = { workspace = true, features = ["fd", "fs", "pipe", "multitask"] }
 axio = { version = "0.1.1", features = ["alloc"] }
 linux-raw-sys = { workspace = true }
 axerrno = "0.1"

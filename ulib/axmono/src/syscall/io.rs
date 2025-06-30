@@ -5,22 +5,21 @@ use arceos_posix_api::{
     ctypes::{self, FD_SETSIZE},
     syscall_body, zero_fd_set,
 };
-use axerrno::LinuxError;
+use axerrno::{LinuxError, LinuxResult};
 use axhal::time::monotonic_time;
-use axsyscall::SyscallResult;
 use axtask::{current, yield_now, TaskExtRef};
 use linux_raw_sys::general::*;
 
 use crate::task::sys_sigprocmask;
 
-pub(crate) unsafe fn sys_pselect(
+pub unsafe fn sys_pselect(
     nfds: c_int,
     readfds: *mut ctypes::fd_set,
     writefds: *mut ctypes::fd_set,
     exceptfds: *mut ctypes::fd_set,
     timeout: *const ctypes::timespec,
     sigmask: *const sigset_t,
-) -> SyscallResult {
+) -> LinuxResult<isize> {
     debug!(
         "sys_pselect <= {} {:#x} {:#x} {:#x}",
         nfds, readfds as usize, writefds as usize, exceptfds as usize

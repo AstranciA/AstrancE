@@ -3,22 +3,31 @@
 // #![cfg(test)]
 
 mod test;
+#[macro_use]
 extern crate axlog;
 use axerrno::LinuxError;
 use syscall_imp::{
     fs::{sys_chdir, sys_getdents},
     sys::sys_uname,
 };
+// use axmono::ptr::{get_uspace, validate_reabable};
 mod syscall_imp;
+use arceos_posix_api::ctype_my::statx;
 use arceos_posix_api::ctypes::{pid_t, timespec, timeval};
 use arceos_posix_api::{ctypes, sys_listxattr, sys_pread64, sys_pwrite64};
-use axlog::debug;
+use axhal::paging::MappingFlags;
+use axmono::validate_ptr;
 use core::ffi::*;
 use core::ptr;
 use syscalls::Sysno::gettimeofday;
 
 pub mod result;
-use crate::syscall_imp::fs::{sys_flistxattr, sys_fsetxattr, sys_utimesat};
+mod utils;
+
+use crate::syscall_imp::fs;
+use crate::syscall_imp::fs::{
+    sys_flistxattr, sys_fremovexattr, sys_fsetxattr, sys_utimesat, test_stat,
+};
 use crate::syscall_imp::io::sys_write;
 use crate::syscall_imp::time::sys_get_time_of_day;
 pub use result::{SyscallResult, ToLinuxResult};
@@ -32,7 +41,6 @@ macro_rules! syscall_handler_def {
             use $crate::result::{SyscallResult, LinuxResultToIsize};
             let args = [tf.arg0(), tf.arg1(), tf.arg2(), tf.arg3(), tf.arg4(), tf.arg5()];
             let sys_id = Sysno::from(syscall_num as u32);
-
             let result:Option<SyscallResult> = match sys_id {
                 $(
                     $(#[$attr])*
@@ -59,35 +67,38 @@ macro_rules! syscall_handler_def {
 
 #[macro_export]
 macro_rules! apply {
-    ($fn:expr, $($arg:ident),* $(,)?) => {
+    ($fn:expr, $($arg:expr),* $(,)?) => {
         $fn($($arg as _),*)
     };
 }
-/*
- *macro_rules! get_args {
- *    ($($arg:ident),* $(,)?) => {
- *        let [$($arg),* ..] = args;
- *    };
- *}
- */
+
+/*macro_rules! get_args {
+     ($($arg:ident),* $(,)?) => {
+        let [$($arg),* ..] = args;
+     };
+}*/
 
 syscall_handler_def!(
-        write => [fd,buf_ptr,size,..] {
-            let buf = unsafe { core::slice::from_raw_parts(buf_ptr as _, size) };
-            syscall_imp::io::sys_write(fd, buf)
+        write => [fd, buf_ptr, size, ..] {
+            // validate_ptr!(buf_ptr, u8, size, MappingFlags::WRITE);
+            let buf = unsafe { core::slice::from_raw_parts(buf_ptr as *mut u8, size) };
+            apply!(syscall_imp::io::sys_write, fd, buf)
         }
 
         read => [fd, buf_ptr, size, ..] {
+            // validate_ptr!(buf_ptr, u8, size, MappingFlags::READ);
             let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr as *mut u8, size) };
-            syscall_imp::io::sys_read(fd, buf)
+            apply!(syscall_imp::io::sys_read, fd, buf)
         }
 
-        readv => [fd, iov, iocnt, ..]{
-            apply!(syscall_imp::io::sys_readv, fd, iov, iocnt)
+        readv => [fd, iov, iovcnt, ..] {
+            // validate_ptr!(iov, ctypes::iovec, iovcnt, MappingFlags::WRITE);
+            apply!(syscall_imp::io::sys_readv, fd, iov, iovcnt)
         }
 
-        writev => [fd, iov, iocnt, ..] {
-            apply!(syscall_imp::io::sys_writev, fd, iov, iocnt)
+        writev => [fd, iov, iovcnt, ..] {
+            // validate_ptr!(iov, ctypes::iovec, iovcnt, MappingFlags::READ);
+            apply!(syscall_imp::io::sys_writev, fd, iov, iovcnt)
         }
         #[cfg(all(feature = "fs", feature = "fd"))]
         renameat => [old_dirfd, old_path, new_dirfd, new_path, ..] {
@@ -136,31 +147,49 @@ syscall_handler_def!(
         #[cfg(all(feature = "fs", feature = "fd"))]
         getdents64 => [fd, buf, count, ..] {
             //apply!(sys_getdents, fd, buf, count)
+            validate_ptr!(buf, ctypes::dirent, MappingFlags::WRITE);
             let count:c_int = count.try_into().unwrap();
-            sys_getdents(fd as _, buf as _, count)
+            apply!(sys_getdents, fd, buf, count)
         }
-
-        /*
-         *#[cfg(all(feature = "fs", feature = "fd"))]
-         *fstat => [fd, buf, ..] {
-         *    unsafe { apply!(syscall_imp::fs::sys_fstat, fd, buf) }
-         *}
-         */
 
         #[cfg(all(feature = "fs", feature = "fd"))]
         fstat => [fd, buf, ..] {
+            validate_ptr!(buf, test_stat, MappingFlags::WRITE);
             unsafe { apply!(syscall_imp::fs::sys_fstat, fd, buf) }
         }
-
-        statx => [dirfd, path, flags, mask, buf, ..]{
-            unsafe{apply!(syscall_imp::fs::sys_statx, dirfd, path, flags, mask, buf)}
+        statx => [dirfd, path, flags, mask, buf, ..] {
+            validate_ptr!(buf, arceos_posix_api::ctype_my::statx, MappingFlags::WRITE);
+            unsafe { apply!(syscall_imp::fs::sys_statx, dirfd, path, flags, mask, buf) }
         }
         #[cfg(target_arch = "riscv64")]
         #[cfg(all(feature = "fs", feature = "fd"))]
         fstatat => [dir_fd, pathname, buf, flags, ..] {
             unsafe { apply!(syscall_imp::fs::sys_fstatat, dir_fd, pathname, buf, flags) }
         }
-
+        statfs => [path, buf,..]{
+            validate_ptr!(buf, axfs_vfs::structs::FileSystemInfo, MappingFlags::WRITE);
+            apply!(fs::sys_statfs, path , buf)
+        }
+        fgetxattr =>[fd, name, buf, sizes,..]{
+            validate_ptr!(buf, c_void, MappingFlags::WRITE);
+            apply!(fs::sys_fgetxattr, fd, name ,buf as *mut c_void, sizes)
+        }
+        fsetxattr =>[fd, name, buf, sizes, flag,..]{
+            validate_ptr!(buf, c_void, MappingFlags::WRITE);
+            apply!(sys_fsetxattr,fd, name, buf, sizes, flag)
+        }
+        flistxattr=>[fd,list,size,..]{
+            apply!(sys_flistxattr, fd, list, size)
+        }
+        fremovexattr =>[fd, name,..]{
+            apply!(sys_fremovexattr, fd ,name)
+        }
+        utimensat =>[dirfd ,path ,times, flags,..]{
+            ///Now it can NOT change atime_nec and mtime_nec and support large number like 1LL<<32
+            let mut now: timeval = timeval{tv_sec:0, tv_usec:0 };
+            sys_get_time_of_day(&mut now).unwrap();
+            apply!(sys_utimesat, dirfd, path, times, now, flags)
+        }
         #[cfg(all(feature = "fs", feature = "fd"))]
         lseek => [fd, offset, whence, ..] {
             apply!(syscall_imp::fs::sys_lseek, fd, offset, whence)
@@ -187,6 +216,8 @@ syscall_handler_def!(
         }
         #[cfg(all(feature = "fs", feature = "fd"))]
         ppoll => [fds, nfds, timeout, sigmask, ..] {
+            //validate_ptr!(fds, ctypes::pollfd, nfds, MappingFlags::READ | MappingFlags::WRITE);
+            // timeout, sigmask 可选校验
             apply!(syscall_imp::fd::sys_ppoll, fds, nfds, timeout, sigmask)
         }
         #[cfg(feature = "pipe")]
@@ -195,63 +226,112 @@ syscall_handler_def!(
             syscall_imp::pipe::sys_pipe(fds)
         }
         pread64 => [fd, buf_ptr, size, off_t, ..] {
-            syscall_imp::fs::sys_pread64(fd as c_int, buf_ptr as *mut u8, size, off_t as isize)
+            fs::sys_pread64(fd as c_int, buf_ptr as *mut u8, size, off_t as isize)
         }
         pwrite64 => [fd, buf_ptr, size, off_t,..] {
-            syscall_imp::fs::sys_pwrite64(fd as c_int, buf_ptr as *mut u8, size, off_t as isize)
+            fs::sys_pwrite64(fd as c_int, buf_ptr as *mut u8, size, off_t as isize)
         }
-        fgetxattr =>[fd, name, buf, sizes,..]{
-            syscall_imp::fs::sys_fgetxattr(fd as c_int,name as *const c_char ,buf as *mut c_void, sizes as usize)
-        }
-        fsetxattr =>[fd, name, buf, sizes, flag,..]{
-            sys_fsetxattr(fd as c_int, name as _, buf as _, sizes as _, flag as _)
-        }
-        flistxattr=>[fd,list,size,..]{
-            sys_flistxattr(fd as c_int, list as _, size as _)
-        }
-        fremovexattr =>[fd, name,..]{
-            syscall_imp::fs::sys_fremovexattr(fd as c_int ,name as *const c_char)
-        }
-        utimensat =>[dirfd ,path ,times, flags,..]{
-            ///Now it can NOT change atime_nec and mtime_nec and support large number like 1LL<<32
-            let mut now: timeval = timeval{tv_sec:0, tv_usec:0 };
-            sys_get_time_of_day(&mut now).unwrap();
-            sys_utimesat(dirfd as _, path as _, times as _, now as _, flags as _)
-        }
-        statfs => [path, buf,..]{
-            syscall_imp::fs::sys_statfs(path as _, buf as _)
-        }
+
         mount => [src, mnt, fstype, mntflag,..]{
-            syscall_imp::fs::sys_mount(src as _,mnt as _,fstype as _,mntflag)
+            apply!(fs::sys_mount, src, mnt, fstype, mntflag)
         }
         umount2=> [mnt,..]{
-            syscall_imp::fs::sys_umount2(mnt as _)
+            apply!(fs::sys_umount2, mnt)
+        }
+        // 虚拟内存管理
+        brk => [new_heap_top, ..] {
+            syscall_imp::mm::sys_brk(new_heap_top)
+        }
+        mprotect => [addr, size, prot, ..] {
+            syscall_imp::mm::sys_mprotect(addr, size, prot)
+        }
+        mmap => [addr, len, prot, flags, fd, offset, ..] {
+            syscall_imp::mm::sys_mmap(addr, len, prot, flags, fd as _, offset)
+        }
+        munmap => [start, size, ..] {
+            syscall_imp::mm::sys_munmap(start, size)
+        }
+
+        //信号处理
+        rt_sigaction => [signum, act, oldact, ..] {
+            syscall_imp::signal::sys_rt_sigaction(signum as i32, act, oldact)
+        }
+        rt_sigprocmask => [how, set, oldset, ..] {
+            syscall_imp::signal::sys_rt_sigprocmask(how as i32, set, oldset)
+        }
+        rt_sigtimedwait => [set, info, timeout, ..] {
+            syscall_imp::signal::sys_rt_sigtimedwait(set, info, timeout)
+        }
+        rt_sigreturn => _ {
+            syscall_imp::signal::sys_rt_sigreturn()
+        }
+        rt_sigsuspend => [mask_ptr, sigsetsize, ..] {
+            syscall_imp::signal::sys_rt_sigsuspend(mask_ptr, sigsetsize)
         }
         // 进程控制相关系统调用
-        /*
-         *exit => [code,..] {
-         *    apply!(syscall_imp::task::sys_exit, code)
-         *}
-         */
-        /*
-         *getpid => _ syscall_imp::task::sys_getpid()
-         *gettid => _ syscall_imp::task::sys_gettid()
-         */
+        exit => [code, ..] {
+            syscall_imp::process::sys_exit(code as i32)
+        }
+        exit_group => [code, ..] {
+            syscall_imp::process::sys_exit_group(code as i32)
+        }
+        clone => [flags, sp, parent_tid, a4, a5, ..] {
+            syscall_imp::process::sys_clone(flags, sp, parent_tid, a4, a5)
+        }
+        wait4 => [pid, wstatus, options, ..] {
+            syscall_imp::process::sys_wait4(pid as i32, wstatus, options as u32)
+        }
+        execve => [pathname, argv, envp, ..] {
+            syscall_imp::process::sys_execve(pathname, argv, envp)
+        }
+        set_tid_address => [tidptr, ..] {
+            syscall_imp::process::sys_set_tid_address(tidptr)
+        }
+        getpid => _ {
+            syscall_imp::process::sys_getpid()
+        }
+        gettid => _ {
+            syscall_imp::process::sys_gettid()
+        }
+        getppid => _ {
+            syscall_imp::process::sys_getppid()
+        }
+        getgid => _ {
+            syscall_imp::process::sys_getgid()
+        }
+        getuid => _ {
+            syscall_imp::process::sys_getuid()
+        }
+        geteuid => _ {
+            syscall_imp::process::sys_geteuid()
+        }
+        getegid => _ {
+            syscall_imp::process::sys_getegid()
+        }
+        kill => [pid, sig, ..] {
+            syscall_imp::process::sys_kill(pid as i32, sig as u32)
+        }
+        setxattr => _ {
+            syscall_imp::process::sys_setxattr()
+        }
         sched_yield => _ syscall_imp::task::sys_yield()
+
         // 时间相关系统调用
-        clock_gettime => args {
-            let cls = args[0];
-            let ts: *mut ctypes::timespec = args[1] as *mut ctypes::timespec;
-            syscall_imp::time::sys_clock_gettime(cls as ctypes::clockid_t, ts)
+        times => [tms_ptr, ..] {
+            syscall_imp::time::sys_times(tms_ptr)
+        }
+        clock_gettime => [clk_id, ts, ..] {
+            validate_ptr!(ts, ctypes::timespec, MappingFlags::WRITE);
+            apply!(syscall_imp::time::sys_clock_gettime, clk_id, ts)
         }
         clock_gettime64 => args {
             let cls = args[0];
             let ts: *mut ctypes::timespec = args[1] as *mut ctypes::timespec;
             syscall_imp::time::sys_clock_gettime(cls as ctypes::clockid_t, ts)
         }
-        gettimeofday => args {
-            let ts: *mut ctypes::timeval = args[0] as *mut ctypes::timeval;
-            syscall_imp::time::sys_get_time_of_day(ts)
+        gettimeofday => [ts, ..] {
+            validate_ptr!(ts, ctypes::timeval, MappingFlags::WRITE);
+            apply!(syscall_imp::time::sys_get_time_of_day, ts)
         }
         nanosleep => args {
             let req: *const ctypes::timespec = args[0] as *const ctypes::timespec;
@@ -267,22 +347,18 @@ syscall_handler_def!(
             syscall_imp::time::sys_nanosleep(req, rem)
         }
         //资源相关系统调用
-        getrlimit => args {
-            let resource = args[0] as c_int;
-            let rlimit = args[1] as *mut ctypes::rlimit;
-            syscall_imp::source::sys_getrlimit(resource, rlimit)
+        getrlimit => [resource, rlimit, ..] {
+            validate_ptr!(rlimit, ctypes::rlimit, MappingFlags::WRITE);
+            apply!(syscall_imp::source::sys_getrlimit, resource, rlimit)
         }
-        setrlimit => args {
-            let resource = args[0] as c_int;
-            let rlimit = args[1] as *mut ctypes::rlimit;
-            syscall_imp::source::sys_setrlimit(resource, rlimit)
+        setrlimit => [resource, rlimit, ..] {
+            validate_ptr!(rlimit, ctypes::rlimit, MappingFlags::READ);
+            apply!(syscall_imp::source::sys_setrlimit, resource, rlimit)
         }
-        prlimit64 => args {
-            let pid = args[0] as pid_t;
-            let resource = args[1] as c_int;
-            let new_limit = args[2] as *mut ctypes::rlimit;
-            let old_limit = args[3] as *mut ctypes::rlimit;
-            syscall_imp::source::sys_prlimit64(pid, resource, new_limit, old_limit)
+        prlimit64 => [pid, resource, new_limit, old_limit, ..] {
+            validate_ptr!(new_limit, ctypes::rlimit, MappingFlags::READ, nullable);
+            validate_ptr!(old_limit, ctypes::rlimit, MappingFlags::WRITE, nullable);
+            apply!(syscall_imp::source::sys_prlimit64, pid, resource, new_limit, old_limit)
         }
         // 其他系统调用
         uname => [buf, ..] apply!(sys_uname, buf),
@@ -364,5 +440,56 @@ syscall_handler_def!(
         }
         fchownat => _ {
             Ok(0)
+        }
+        futex => [uaddr, futex_op, val, timeout, uaddr2, val3, ..] {
+            error!("exit futex");
+            axmono::task::sys_exit(-1 as i32);
+            // 调用 syscall/pthread.rs 中实现的 sys_futex
+            // pthread::sys_futex(uaddr, futex_op, val, timeout as isize, uaddr2, val3)
+            Ok(0)
+        }
+
+
+        // System V IPC Shared Memory System Calls
+        // shmget(key, size, shmflg)
+        shmget => [key, size, shmflg, ..] {
+            apply!(syscall_imp::ipc::sys_shmget, key, size, shmflg)
+        }
+
+        // shmat(shmid, shmaddr, shmflg)
+        shmat => [shmid, shmaddr, shmflg, ..] {
+            // shmid: c_int (i32)
+            // shmaddr: *const c_void (usize -> *const c_void)
+            // shmflg: c_int (i32)
+            // 注意：shmaddr 是一个裸指针，需要从 usize 转换
+            let shmaddr_ptr: *const c_void = shmaddr as *const c_void;
+            apply!(syscall_imp::ipc::sys_shmat, shmid, shmaddr_ptr, shmflg)
+        }
+
+        // shmdt(shmaddr)
+        shmdt => [shmaddr, ..] {
+            // shmaddr: *const c_void (usize -> *const c_void)
+            let shmaddr_ptr: *const c_void = shmaddr as *const c_void;
+            apply!(syscall_imp::ipc::sys_shmdt, shmaddr_ptr)
+        }
+
+        // shmctl(shmid, cmd, buf)
+        shmctl => [shmid, cmd, buf, ..] {
+            // shmid: c_int (i32)
+            // cmd: c_int (i32)
+            // buf: *mut c_void (usize -> *mut c_void)
+            // 注意：buf 是一个裸指针，需要从 usize 转换
+            let buf_ptr: *mut c_void = buf as *mut c_void;
+            apply!(syscall_imp::ipc::sys_shmctl, shmid, cmd, buf_ptr)
+        }
+
+        pselect6 => [nfds, readfds, writefds, exceptfds, timeout, sigmask] {
+            // 因为 sys_pselect 内部可能需要裸指针操作，所以这里也需要 unsafe
+            unsafe {
+                apply!(
+                    syscall_imp::io::sys_pselect,
+                    nfds, readfds, writefds, exceptfds, timeout, sigmask
+                )
+            }
         }
 );

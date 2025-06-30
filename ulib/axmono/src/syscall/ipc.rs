@@ -3,7 +3,7 @@
 use core::ffi::{c_int, c_void};
 
 use arceos_posix_api::{ctypes, syscall_body}; // Note: syscall_body might not be needed after this change
-use axerrno::{AxError, AxResult, LinuxError};
+use axerrno::{AxError, AxResult, LinuxError, LinuxResult};
 use axhal::mem::VirtAddr;
 use axlog::{debug, error};
 use axmm::{
@@ -13,7 +13,6 @@ use axmm::{
         shm_ctl as axmm_shm_ctl, shm_dt as axmm_shm_dt, shm_get as axmm_shm_get,
     },
 };
-use axsyscall::SyscallResult; // Assuming SyscallResult is Result<isize, LinuxError>
 use axtask::{TaskExtRef, current}; // Import debug and error for logging
 
 /// POSIX `shmget()` system call.
@@ -24,7 +23,7 @@ use axtask::{TaskExtRef, current}; // Import debug and error for logging
 /// `shmflg`: Flags like IPC_CREAT, IPC_EXCL, and permission bits.
 ///
 /// Returns the shared memory ID (shmid) on success, or -1 on error.
-pub fn sys_shmget(key: c_int, size: usize, shmflg: c_int) -> SyscallResult {
+pub fn sys_shmget(key: c_int, size: usize, shmflg: c_int) -> LinuxResult<isize> {
     debug!(
         "sys_shmget <= key:{} size:{} shmflg:{:#o}",
         key, size, shmflg
@@ -46,7 +45,7 @@ pub fn sys_shmget(key: c_int, size: usize, shmflg: c_int) -> SyscallResult {
 /// `shmflg`: Flags like SHM_RDONLY, SHM_REMAP.
 ///
 /// Returns the virtual address where the segment is attached on success, or -1 on error.
-pub fn sys_shmat(shmid: c_int, shmaddr: *const c_void, shmflg: c_int) -> SyscallResult {
+pub fn sys_shmat(shmid: c_int, shmaddr: *const c_void, shmflg: c_int) -> LinuxResult<isize> {
     debug!(
         "sys_shmat <= shmid:{} shmaddr:{:#x} shmflg:{:#o}",
         shmid, shmaddr as usize, shmflg
@@ -77,7 +76,7 @@ pub fn sys_shmat(shmid: c_int, shmaddr: *const c_void, shmflg: c_int) -> Syscall
 /// `shmaddr`: The virtual address where the segment is attached.
 ///
 /// Returns 0 on success, or -1 on error.
-pub fn sys_shmdt(shmaddr: *const c_void) -> SyscallResult {
+pub fn sys_shmdt(shmaddr: *const c_void) -> LinuxResult<isize> {
     debug!("sys_shmdt <= shmaddr:{:#x}", shmaddr as usize);
 
     let curr = current();
@@ -96,7 +95,7 @@ pub fn sys_shmdt(shmaddr: *const c_void) -> SyscallResult {
 /// `buf`: Pointer to a `shmid_ds` structure (for IPC_STAT/IPC_SET).
 ///
 /// Returns 0 on success, or -1 on error.
-pub fn sys_shmctl(shmid: c_int, cmd: c_int, buf: *mut c_void) -> SyscallResult {
+pub fn sys_shmctl(shmid: c_int, cmd: c_int, buf: *mut c_void) -> LinuxResult<isize> {
     debug!(
         "sys_shmctl <= shmid:{} cmd:{} buf:{:#x}",
         shmid, cmd, buf as usize

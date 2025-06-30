@@ -18,18 +18,27 @@ use axfs::{CURRENT_DIR, api::set_current_dir, fops::Directory};
 use axhal::trap::{PRE_TRAP, register_trap_handler};
 use axhal::{arch::TrapFrame, time::nanos_to_ticks};
 use axmm::{MmapFlags, MmapPerm};
-use axsyscall::{ToLinuxResult, apply, syscall_handler_def};
+// use axsyscall::{ToLinuxResult, apply, syscall_handler_def};
 use axtask::{CurrentTask, TaskExtMut, TaskExtRef, current};
 use core::ffi::c_int;
 use linux_raw_sys::general as linux;
 use memory_addr::MemoryAddr;
 use syscalls::Sysno;
 
-mod io;
-mod ipc;
-mod mm;
-mod pthread;
+pub mod io;
+pub mod ipc;
+pub mod mm;
+pub mod pthread;
+pub mod process;
+pub mod signal;
+pub mod time;
 
+pub use mm::*;
+pub use process::*;
+pub use signal::*;
+pub use time::*;
+
+/*
 syscall_handler_def!(
         exit => [code,..] {
             task::sys_exit((code & 0xff) as i32)
@@ -228,7 +237,7 @@ syscall_handler_def!(
             }
         }
 );
-
+*/
 fn foo() {
     //LinuxError::ENOSYS
 }
