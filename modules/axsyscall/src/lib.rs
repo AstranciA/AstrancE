@@ -104,6 +104,10 @@ syscall_handler_def!(
         renameat => [old_dirfd, old_path, new_dirfd, new_path, ..] {
             apply!(syscall_imp::fs::sys_renameat, old_dirfd, old_path, new_dirfd, new_path)
         }
+        #[cfg(all(feature = "fs", feature = "fd"))]
+        renameat2 => [old_dirfd, old_path, new_dirfd, new_path, ..] {
+            apply!(syscall_imp::fs::sys_renameat, old_dirfd, old_path, new_dirfd, new_path)
+        }
         // 文件操作相关系统调用
         #[cfg(all(feature = "fs", feature = "fd"))]
         openat => [dirfd, fname, flags, mode, ..] {
@@ -121,13 +125,13 @@ syscall_handler_def!(
 
 
         #[cfg(all(feature = "fs", target_arch = "x86_64"))]
-        unlink => [path_name, ..] {
-             apply!(syscall_imp::fs::sys_unlink, path_name)
+        unlink => [path_name, flags, ..] {
+             apply!(syscall_imp::fs::sys_unlink, path_name, flags)
         }
 
         #[cfg(all(feature = "fs", feature = "fd"))]
-        unlinkat => [dirfd, path_name, ..] {
-             apply!(syscall_imp::fs::sys_unlinkat, dirfd, path_name)
+        unlinkat => [dirfd, path_name, flags, ..] {
+             apply!(syscall_imp::fs::sys_unlinkat, dirfd, path_name, flags)
         }
 
         /* TODO:

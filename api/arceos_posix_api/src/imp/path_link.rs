@@ -8,6 +8,8 @@ use alloc::string::{String, ToString};
 use axerrno::{AxError, AxResult};
 use axfs::api::{canonicalize, current_dir};
 
+use crate::ctypes::AT_FDCWD;
+
 /// 一个规范化的文件路径表示
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub struct FilePath(String);
@@ -281,9 +283,6 @@ impl HardlinkManager {
     }
 }
 
-/// A constant representing the current working directory
-pub const AT_FDCWD: isize = -100;
-
 /// 处理路径并返回规范化后的 `FilePath`
 ///
 /// * `dir_fd` - 目录的文件描述符，如果是 `AT_FDCWD`，则操作当前工作目录
@@ -321,7 +320,7 @@ pub fn handle_file_path(
 
     // 处理相对路径的情况
     if !path.starts_with('/') {
-        if dir_fd == AT_FDCWD {
+        if dir_fd == AT_FDCWD as isize{
             path = prepend_cwd(&path)?;
         } else {
             path = handle_relative_path(dir_fd, &path)?;

@@ -167,7 +167,7 @@ impl FileWrapper {
 
     fn path_deal_with(&self, path: &str) -> String {
         if path.starts_with('/') {
-            warn!("path_deal_with: {}", path);
+            debug!("path_deal_with: {}", path);
         }
         let p = path.trim_matches('/'); // 首尾去除
         if p.is_empty() || p == "." {
@@ -601,8 +601,9 @@ impl VfsNodeOps for FileWrapper {
     }
 
     fn rename(&self, src_path: &str, dst_path: &str) -> VfsResult {
+        let src_path = self.path_deal_with(src_path);
         let mut file = self.0.lock();
-        file.file_rename(src_path, dst_path)
+        file.file_rename(src_path.as_str(), dst_path)
             .map(|_v| ())
             .map_err(|e| e.try_into().unwrap())
     }

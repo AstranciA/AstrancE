@@ -66,6 +66,7 @@ fn main() {
             "SIG.*",
             "O_.*",
             "AF_.*",
+            "AT_.*",
             "SOCK_.*",
             "IPPROTO_.*",
             "FD_.*",

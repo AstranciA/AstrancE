@@ -348,6 +348,7 @@ pub fn init_fs() -> VfsResult<()> {
     proc_root.create_dynamic_file("uptime", create_uptime_file_generator())?;
     // === /proc/loadavg ===
     proc_root.create_dynamic_file("loadavg", create_loadavg_file_generator())?;
+    proc_root.create_static_file("mounts", "".as_bytes())?;
 
     // TODO: 在这里为 /proc/self 添加其他文件，如 "cmdline", "status" 等。
 

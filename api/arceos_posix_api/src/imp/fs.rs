@@ -2,7 +2,7 @@ use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use axfs::CURRENT_DIR;
-use axfs::api::{DirEntry, create_dir, read_dir, remove_file};
+use axfs::api::{DirEntry, create_dir, current_dir, read_dir, remove_file};
 use axfs::path::join;
 use axfs::root::{ROOT_DIR, RootDirectory};
 use axfs_vfs::{FileSystemInfo, VfsDirEntry, VfsNodeAttr, VfsNodeOps, VfsNodeType};
@@ -12,9 +12,8 @@ use core::{panic, ptr, slice};
 use static_assertions::assert_eq_size;
 
 use super::fd_ops::{FileLike, get_file_like};
-use crate::AT_FDCWD;
 use crate::ctype_my::{__u32, statx, statx_timestamp};
-use crate::ctypes::{__IncompleteArrayField, stat, time_t, timespec, timeval};
+use crate::ctypes::{__IncompleteArrayField, stat, time_t, timespec, timeval, AT_FDCWD, AT_REMOVEDIR};
 use axerrno::{LinuxError, LinuxResult};
 use axfs::fops::OpenOptions;
 use axfs_vfs::structs::VfsNodeAttrX;
@@ -358,7 +357,7 @@ pub fn sys_mkdirat(dirfd: c_int, dirname: *const c_char, mode: ctypes::mode_t) -
     if dirname.starts_with('/') || dirfd == AT_FDCWD as _ {
         return create_dir(dirname).and(Ok(0)).unwrap_or_else(|e| {
             debug!("sys_mkdirat => {}", e);
-            -1
+            -LinuxError::from(e).code()
         });
     }
 
@@ -369,7 +368,7 @@ pub fn sys_mkdirat(dirfd: c_int, dirname: *const c_char, mode: ctypes::mode_t) -
         })
         .unwrap_or_else(|e| {
             debug!("sys_mkdirat => {}", e);
-            -1
+            -e.code()
         })
 }
 
@@ -833,17 +832,38 @@ pub fn sys_renameat(
         let old_path = char_ptr_to_str(old)?;
         let new_path = char_ptr_to_str(new)?;
         // 处理相对路径的情况
-        let old_path = if old_path.starts_with('/') || old_dirfd == AT_FDCWD as i32 {
+        let old_path = if old_path.starts_with('/') {
+            // 如果是绝对路径，直接使用
             old_path.to_string()
+        } else if old_dirfd == AT_FDCWD as i32 {
+            // 如果 old_dirfd 是 AT_FDCWD，则相对于当前工作目录解析
+            current_dir()
+                .map(|cwd| join(cwd.as_str(), &[old_path]))
+                .unwrap_or(old_path.to_string())
         } else {
+            // 否则，相对于 old_dirfd 指向的目录解析
             match Directory::from_fd(old_dirfd) {
                 Ok(old_dir) => join(old_dir.path(), &[old_path]),
                 Err(_) => return Err(LinuxError::EBADF), // 无效的文件描述符
             }
         };
+        /*
+         *let old_path = if old_path.starts_with('/') || old_dirfd == AT_FDCWD as i32 {
+         *    old_path.to_string()
+         *} else {
+         *    match Directory::from_fd(old_dirfd) {
+         *        Ok(old_dir) => join(old_dir.path(), &[old_path]),
+         *        Err(_) => return Err(LinuxError::EBADF), // 无效的文件描述符
+         *    }
+         *};
+         */
         // 处理新路径的情况
-        let new_path = if new_path.starts_with('/') || new_dirfd == AT_FDCWD as i32 {
+        let new_path = if new_path.starts_with('/') {
             new_path.to_string()
+        } else if new_dirfd == AT_FDCWD as i32 {
+            current_dir()
+                .map(|cwd| join(cwd.as_str(), &[new_path]))
+                .unwrap_or(new_path.to_string())
         } else {
             match Directory::from_fd(new_dirfd) {
                 Ok(new_dir) => join(new_dir.path(), &[new_path]),
@@ -1202,20 +1222,28 @@ pub unsafe fn sys_getdents(
     Ok((curr_ptr as usize - buf_start as usize) as isize)
 }
 
-pub fn sys_unlink(path: *const c_char) -> LinuxResult<isize> {
+pub fn sys_unlink(path: *const c_char, flags: c_int) -> LinuxResult<isize> {
     let path = char_ptr_to_str(path).map_err(|_| LinuxError::EFAULT)?;
     warn!("sys_unlink <= {:?}", path);
-    remove_file(path)?;
+    if flags & AT_REMOVEDIR as i32 != 0{
+        read_dir(path)?;
+    } else {
+        remove_file(path)?;
+    }
     Ok(0)
 }
-pub fn sys_unlinkat(dir_fd: i32, path: *const c_char) -> LinuxResult<isize> {
-    if dir_fd < 0 {
-        return sys_unlink(path);
+pub fn sys_unlinkat(dir_fd: i32, path: *const c_char, flags: c_int) -> LinuxResult<isize> {
+    if dir_fd == AT_FDCWD {
+        return sys_unlink(path, flags);
     }
     let dir: Arc<Directory> = Directory::from_fd(dir_fd)?;
     let path = char_ptr_to_str(path).map_err(|_| LinuxError::EFAULT)?;
     warn!("sys_unlinkat <= {dir_fd} {:?}", path);
-    dir.inner.lock().remove_file(path)?;
+    if flags & AT_REMOVEDIR as i32!= 0{
+        dir.inner.lock().remove_dir(path)?;
+    } else {
+        dir.inner.lock().remove_file(path)?;
+    }
     Ok(0)
 }
 
@@ -1297,7 +1325,7 @@ pub fn sys_utimensat(
             let file = dir.lookup(pathname).map_err(|e| {
                 debug!("lookup failed: {:?}", e);
                 match e {
-                    _ => LinuxError::ENOTDIR,
+                    _ => LinuxError::ENOENT,
                 }
             })?;
             if let Some((sec, nsec)) = atime_opt {

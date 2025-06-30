@@ -182,9 +182,9 @@ impl File {
         };
 
         let attr = node.get_attr()?;
-        // if attr.is_dir() {
-        //     return ax_err!(IsADirectory);
-        // }
+        if attr.is_dir() {
+            return ax_err!(IsADirectory);
+        }
         let access_cap = opts.into();
         if !perm_to_cap(attr.perm()).contains(access_cap) {
             return ax_err!(PermissionDenied);

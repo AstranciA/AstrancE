@@ -98,6 +98,7 @@
 #endif
 
 #define AT_FDCWD      (-100)
+#define AT_REMOVEDIR  (0x200)
 #define AT_EMPTY_PATH 0x1000
 
 #define SYNC_FILE_RANGE_WAIT_BEFORE 1

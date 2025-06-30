@@ -162,13 +162,13 @@ pub fn sys_getdents(fd: c_int, dirp: *mut ctypes::dirent, count: c_int) -> Sysca
 }
 
 #[inline]
-pub fn sys_unlink(path: *const c_char) -> SyscallResult {
-    api::sys_unlink(path)
+pub fn sys_unlink(path: *const c_char, flags: c_int) -> SyscallResult {
+    api::sys_unlink(path, flags)
 }
 
 #[inline]
-pub fn sys_unlinkat(dir_fd: c_int, path: *const c_char) -> SyscallResult {
-    api::sys_unlinkat(dir_fd, path)
+pub fn sys_unlinkat(dir_fd: c_int, path: *const c_char, flags: c_int) -> SyscallResult {
+    api::sys_unlinkat(dir_fd, path, flags)
 }
 
 pub fn sys_fgetxattr(
