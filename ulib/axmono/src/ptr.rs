@@ -48,6 +48,9 @@ fn check_region(start: VirtAddr, layout: Layout, access_flags: MappingFlags) -> 
     Ok(())
 }
 
+/// **代码来源声明：**
+/// 
+/// [oscomp/starry-next](https://github.com/oscomp/starry-next) 项目。
 fn check_null_terminated<T: Eq + Default>(
     start: VirtAddr,
     access_flags: MappingFlags,
@@ -108,6 +111,9 @@ fn check_null_terminated<T: Eq + Default>(
 /// Converting a `PtrWrapper<T>` to `*T` is done by `PtrWrapper::get` (or
 /// `get_as_*`). It checks whether the pointer along with its layout is valid in
 /// the current task's address space, and raises EFAULT if not.
+/// **代码来源声明：**
+/// 
+/// [oscomp/starry-next](https://github.com/oscomp/starry-next) 项目。
 pub trait PtrWrapper<T>: Sized {
     type Ptr;
 
@@ -168,6 +174,9 @@ pub trait PtrWrapper<T>: Sized {
 /// A pointer to user space memory.
 ///
 /// See [`PtrWrapper`] for more details.
+/// **代码来源声明：**
+/// 
+/// [oscomp/starry-next](https://github.com/oscomp/starry-next) 项目。
 #[repr(transparent)]
 pub struct UserPtr<T>(*mut T);
 

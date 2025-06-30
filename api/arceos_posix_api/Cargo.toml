@@ -9,6 +9,9 @@ authors = [
   "yfblock <321353225@qq.com>",
   "scPointer <bhy18@mails.tsinghua.edu.cn>",
   "Shiping Yuan <robert_yuan@pku.edu.com>",
+   "ZreXoc <zeexoc@outlook.com>",
+  "MukioXun <3045859462@qq.com>",
+  "LEOibyug <y2695719556@outlook.com>",
 ]
 description = "POSIX-compatible APIs for ArceOS modules"
 license.workspace = true

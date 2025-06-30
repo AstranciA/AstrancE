@@ -24,11 +24,12 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-authors = ["Yuekai Jia <equation618@gmail.com>"]
+#authors = ["Yuekai Jia <equation618@gmail.com>", "ZreXoc <zeexoc@outlook.com>", "LEOibyug <y2695719556@outlook.com>"]
+authors = ["Yuekai Jia <equation618@gmail.com>", "ZreXoc <zeexoc@outlook.com>", "MukioXun <3045859462@qq.com>", "LEOibyug <y2695719556@outlook.com>"]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
-homepage = "https://github.com/arceos-org/arceos"
-documentation = "https://arceos-org.github.io/arceos"
-repository = "https://github.com/arceos-org/arceos"
+homepage = "https://github.com/AstranciA/AstrancE"
+documentation = "https://github.com/AstranciA/AstrancE"
+repository = "https://github.com/AstranciA/AstrancE"
 keywords = ["arceos", "kernel"]
 categories = ["os", "no-std"]
 

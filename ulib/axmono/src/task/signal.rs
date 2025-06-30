@@ -13,7 +13,6 @@ use memory_addr::{VirtAddr, VirtAddrRange};
 
 use crate::{
     mm::trampoline_vaddr,
-    ptr::{PtrWrapper, UserPtr},
     task::{PROCESS_GROUP_TABLE, sys_exit},
 };
 

@@ -1,3 +1,7 @@
+//! **代码来源声明：**
+//! 本文件代码参考
+//! [oscomp/starry-next](https://github.com/oscomp/starry-next) 项目。
+//!
 use arceos_posix_api::FD_TABLE;
 use axprocess::Pid;
 use axsignal::{SigCode, SigCodeSigChld, SigStatus, Signal, SignalSet};

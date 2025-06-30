@@ -1,3 +1,9 @@
+//! 提供了进程/线程管理以及上下文切换的相关实现。
+//!
+//! **代码来源声明：**
+//! `clone` 系统调用相关的 `flag` 处理逻辑，参考并改编自
+//! [oscomp/starry-next](https://github.com/oscomp/starry-next) 项目。
+//!
 use core::{
     ptr,
     sync::atomic::{AtomicUsize, Ordering},

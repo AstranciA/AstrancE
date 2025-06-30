@@ -1,3 +1,7 @@
+//! **代码来源声明：**
+//! 本文件代码来自
+//! [oscomp/starry-next](https://github.com/oscomp/starry-next) 项目。
+//!
 //! clone 任务时指定的参数。
 use arceos_posix_api::ctypes::*;
 use bitflags::*;

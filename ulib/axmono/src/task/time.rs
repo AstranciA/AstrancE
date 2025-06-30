@@ -1,3 +1,7 @@
+//! **代码来源声明：**
+//! 本文件代码来自
+//! [oscomp/starry-next](https://github.com/oscomp/starry-next) 项目。
+//!
 numeric_enum_macro::numeric_enum! {
     #[repr(i32)]
     #[allow(non_camel_case_types)]

@@ -2,7 +2,7 @@
 name = "axsyscall"
 version.workspace = true
 edition.workspace = true
-authors.workspace = true
+authors = ["ZreXoc <zeexoc@outlook.com>", "MukioXun <3045859462@qq.com>", "LEOibyug <y2695719556@outlook.com>"]
 license.workspace = true
 homepage.workspace = true
 documentation.workspace = true

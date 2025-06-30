@@ -1,3 +1,7 @@
+//! **代码来源声明：**
+//! 本文件代码来自
+//! [oscomp/starry-next](https://github.com/oscomp/starry-next) 项目。
+//!
 use crate::{
     ptr::{PtrWrapper, UserPtr},
     task::ProcessData,

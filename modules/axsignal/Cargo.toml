@@ -2,7 +2,7 @@
 name = "axsignal"
 version.workspace = true
 edition.workspace = true
-authors.workspace = true
+authors = ["ZreXoc <zeexoc@outlook.com>"]
 license.workspace = true
 homepage.workspace = true
 documentation.workspace = true
