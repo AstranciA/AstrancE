@@ -13,7 +13,9 @@ use static_assertions::assert_eq_size;
 
 use super::fd_ops::{FileLike, get_file_like};
 use crate::ctype_my::{__u32, statx, statx_timestamp};
-use crate::ctypes::{__IncompleteArrayField, stat, time_t, timespec, timeval, AT_FDCWD, AT_REMOVEDIR};
+use crate::ctypes::{
+    __IncompleteArrayField, AT_FDCWD, AT_REMOVEDIR, stat, time_t, timespec, timeval,
+};
 use axerrno::{LinuxError, LinuxResult};
 use axfs::fops::OpenOptions;
 use axfs_vfs::structs::VfsNodeAttrX;
@@ -1225,7 +1227,7 @@ pub unsafe fn sys_getdents(
 pub fn sys_unlink(path: *const c_char, flags: c_int) -> LinuxResult<isize> {
     let path = char_ptr_to_str(path).map_err(|_| LinuxError::EFAULT)?;
     warn!("sys_unlink <= {:?}", path);
-    if flags & AT_REMOVEDIR as i32 != 0{
+    if flags & AT_REMOVEDIR as i32 != 0 {
         read_dir(path)?;
     } else {
         remove_file(path)?;
@@ -1239,7 +1241,7 @@ pub fn sys_unlinkat(dir_fd: i32, path: *const c_char, flags: c_int) -> LinuxResu
     let dir: Arc<Directory> = Directory::from_fd(dir_fd)?;
     let path = char_ptr_to_str(path).map_err(|_| LinuxError::EFAULT)?;
     warn!("sys_unlinkat <= {dir_fd} {:?}", path);
-    if flags & AT_REMOVEDIR as i32!= 0{
+    if flags & AT_REMOVEDIR as i32 != 0 {
         dir.inner.lock().remove_dir(path)?;
     } else {
         dir.inner.lock().remove_file(path)?;

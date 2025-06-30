@@ -1,14 +1,17 @@
 use crate::alloc::string::String;
 use alloc::string::ToString;
 use alloc::sync::Arc;
-use core::ffi::{c_char, c_void, c_long, c_ulong, c_int};
-use core::{mem, ptr};
 use axerrno::AxError;
-use axfs_vfs::{FileSystemInfo,VfsDirEntry, VfsError, VfsNodePerm, VfsResult};
+use axfs_vfs::structs::{STATX_ALL_MASK, StatxMask, VfsNodeAttrX};
+use axfs_vfs::{FileSystemInfo, VfsDirEntry, VfsError, VfsNodePerm, VfsResult};
 use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsNodeRef, VfsNodeType, VfsOps};
-use axfs_vfs::structs::{StatxMask, VfsNodeAttrX, STATX_ALL_MASK};
 use axsync::Mutex;
-use lwext4_rust::bindings::{ext4_file, ext4_get_sblock, ext4_getxattr, ext4_inode, ext4_removexattr, ext4_sblock, O_CREAT, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY, SEEK_CUR, SEEK_END, SEEK_SET};
+use core::ffi::{c_char, c_int, c_long, c_ulong, c_void};
+use core::{mem, ptr};
+use lwext4_rust::bindings::{
+    O_CREAT, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY, SEEK_CUR, SEEK_END, SEEK_SET, ext4_file,
+    ext4_get_sblock, ext4_getxattr, ext4_inode, ext4_removexattr, ext4_sblock,
+};
 use lwext4_rust::{Ext4BlockWrapper, Ext4File, InodeTypes, KernelDevOp};
 
 use crate::dev::Disk;
@@ -91,15 +94,12 @@ impl<T: KernelDevOp<DevType = T>> VfsOps for Ext4FileSystem<T> {
      */
     fn statfs(&self, _path: *const c_char, fs_info: *mut FileSystemInfo) -> VfsResult<usize> {
         let mut sb_ptr: *mut ext4_sblock = ptr::null_mut();
-        let ret = unsafe{
-            ext4_get_sblock(_path, &mut sb_ptr as *mut _)
-        };
-        
+        let ret = unsafe { ext4_get_sblock(_path, &mut sb_ptr as *mut _) };
+
         if ret == 0 && !sb_ptr.is_null() {
-            unsafe{get_filesystem_info(sb_ptr, fs_info)};
+            unsafe { get_filesystem_info(sb_ptr, fs_info) };
             Ok(0)
-        }
-        else { 
+        } else {
             Err(VfsError::NotFound)
         }
     }
@@ -121,7 +121,8 @@ pub unsafe fn get_filesystem_info(sb: *const ext4_sblock, fs_info: *mut FileSyst
     info.blocks = blocks_count;
 
     // 空闲块数
-    let free_blocks = (sblock.free_blocks_count_hi as u64) << 32 | sblock.free_blocks_count_lo as u64;
+    let free_blocks =
+        (sblock.free_blocks_count_hi as u64) << 32 | sblock.free_blocks_count_lo as u64;
     info.bfree = free_blocks;
 
     // 普通用户可用块数（暂设与空闲块相同）
@@ -134,14 +135,14 @@ pub unsafe fn get_filesystem_info(sb: *const ext4_sblock, fs_info: *mut FileSyst
     info.ffree = sblock.free_inodes_count as u64;
 
     // 文件系统 ID（使用 UUID 的前8字节组合为 u64）
-    info.fsid = ((sblock.uuid[0] as u64) << 56) |
-        ((sblock.uuid[1] as u64) << 48) |
-        ((sblock.uuid[2] as u64) << 40) |
-        ((sblock.uuid[3] as u64) << 32) |
-        ((sblock.uuid[4] as u64) << 24) |
-        ((sblock.uuid[5] as u64) << 16) |
-        ((sblock.uuid[6] as u64) << 8)  |
-        (sblock.uuid[7] as u64);
+    info.fsid = ((sblock.uuid[0] as u64) << 56)
+        | ((sblock.uuid[1] as u64) << 48)
+        | ((sblock.uuid[2] as u64) << 40)
+        | ((sblock.uuid[3] as u64) << 32)
+        | ((sblock.uuid[4] as u64) << 24)
+        | ((sblock.uuid[5] as u64) << 16)
+        | ((sblock.uuid[6] as u64) << 8)
+        | (sblock.uuid[7] as u64);
 
     // 最大文件名长度
     info.namelen = 255;
@@ -238,7 +239,7 @@ impl VfsNodeOps for FileWrapper {
             blocks,
         );
 
-        let attr:VfsNodeAttr = if vtype == VfsNodeType::Dir {
+        let attr: VfsNodeAttr = if vtype == VfsNodeType::Dir {
             VfsNodeAttr::new(
                 0,
                 perm,
@@ -250,10 +251,14 @@ impl VfsNodeOps for FileWrapper {
                 inode.uid(),
                 inode.gid(),
                 inode.nblk_lo(),
-                0, 0, 0,
-                0, 0, 0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
             )
-        } else{
+        } else {
             VfsNodeAttr::new(
                 0,
                 perm,
@@ -275,7 +280,7 @@ impl VfsNodeOps for FileWrapper {
         };
         Ok(attr)
     }
-    
+
     fn get_attr_x(&self) -> VfsResult<VfsNodeAttrX> {
         let mut file = self.0.lock();
 
@@ -319,7 +324,7 @@ impl VfsNodeOps for FileWrapper {
             blocks,
         );
 
-        let attr:VfsNodeAttrX = if vtype == VfsNodeType::Dir {
+        let attr: VfsNodeAttrX = if vtype == VfsNodeType::Dir {
             VfsNodeAttrX::new(
                 STATX_ALL_MASK.bits(),
                 BLOCK_SIZE as u32,
@@ -333,13 +338,20 @@ impl VfsNodeOps for FileWrapper {
                 size,
                 blocks,
                 0,
-                0, 0, 0,
-                0, 0, 0,
-                0,0,
-                0,0,
-                0,0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
             )
-        } else{
+        } else {
             VfsNodeAttrX::new(
                 STATX_ALL_MASK.bits(),
                 BLOCK_SIZE as u32,
@@ -361,8 +373,10 @@ impl VfsNodeOps for FileWrapper {
                 inode.btime_ex(),
                 inode.ctime_ex(),
                 inode.mtime_ex(),
-                0,0,
-                0,0,
+                0,
+                0,
+                0,
+                0,
             )
         };
         Ok(attr)
@@ -373,19 +387,19 @@ impl VfsNodeOps for FileWrapper {
             .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
         Ok(0)
     }
-     fn set_mtime(&self, mtime: u32, mtime_n: u32) -> VfsResult<usize> {
-         let file = self.0.lock();
-         file.set_mtime(mtime, mtime_n)
-             .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
-         Ok(0)
-     }
+    fn set_mtime(&self, mtime: u32, mtime_n: u32) -> VfsResult<usize> {
+        let file = self.0.lock();
+        file.set_mtime(mtime, mtime_n)
+            .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
+        Ok(0)
+    }
     fn get_xattr(
         &self,
         name: *const c_char,
         name_len: usize,
         buf: *mut c_void,
         buf_size: usize,
-        data_size: *mut usize
+        data_size: *mut usize,
     ) -> VfsResult<usize> {
         let file = self.0.lock();
         file.get_xattr(name, name_len, buf, buf_size, data_size)
@@ -398,28 +412,20 @@ impl VfsNodeOps for FileWrapper {
         name_len: usize,
         data: *mut c_void,
         data_size: usize,
-    )->VfsResult<usize>{
+    ) -> VfsResult<usize> {
         let file = self.0.lock();
-        file.set_xattr(name,name_len,data,data_size)
+        file.set_xattr(name, name_len, data, data_size)
             .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
         Ok(0)
     }
-    fn list_xattr(
-        &self,
-        list: *mut c_char,
-        size: usize,
-        ret_size: *mut usize,
-    )->VfsResult<usize>{
+    fn list_xattr(&self, list: *mut c_char, size: usize, ret_size: *mut usize) -> VfsResult<usize> {
         let file = self.0.lock();
-        let ret = file.list_xattr(list, size, ret_size)
+        let ret = file
+            .list_xattr(list, size, ret_size)
             .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
         Ok(ret)
     }
-    fn remove_xattr(
-        &self,
-        name: *const c_char,
-        name_len: usize,
-    )->VfsResult<usize>{
+    fn remove_xattr(&self, name: *const c_char, name_len: usize) -> VfsResult<usize> {
         let file = self.0.lock();
         file.remove_xattr(name, name_len)
             .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
@@ -501,7 +507,7 @@ impl VfsNodeOps for FileWrapper {
     /// Read directory entries into `dirents`, starting from `start_idx`.
     fn read_dir(&self, start_idx: usize, dirents: &mut [VfsDirEntry]) -> VfsResult<usize> {
         let file = self.0.lock();
-        let (name, inode_type) = file.lwext4_dir_entries().unwrap();
+        let (name, inode_type) = file.lwext4_dir_entries().map_err(|_| AxError::BadState)?;
 
         let mut name_iter = name.iter().skip(start_idx);
         let mut inode_type_iter = inode_type.iter().skip(start_idx);
