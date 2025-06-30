@@ -347,7 +347,7 @@ pub fn yield_with_time_stat() {
 fn pre_trap_handler(trap_frame: &mut TrapFrame, from_user: bool) -> bool {
     if from_user {
         time_stat_from_user_to_kernel();
-        handle_pending_signals(trap_frame);
+        //handle_pending_signals(trap_frame);
     }
     true
 }
