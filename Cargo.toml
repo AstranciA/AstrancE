@@ -18,6 +18,7 @@ members = [
   "examples/httpserver",
   "examples/shell",
   "examples/TCP_test",
+  "ulib/axsyscall",
   "ulib/axmono",
 ]
 
@@ -59,7 +60,7 @@ axruntime = { path = "modules/axruntime" }
 axsync = { path = "modules/axsync" }
 axtask = { path = "modules/axtask" }
 axdma = { path = "modules/axdma" }
-axsyscall = { path = "modules/axsyscall" }
+axsyscall = { path = "ulib/axsyscall" }
 acbat = { path = "modules/acbat" }
 axptr = {path="modules/axptr"}
 syscalls = { git = "https://github.com/jasonwhite/syscalls.git", default-features = false, features = [

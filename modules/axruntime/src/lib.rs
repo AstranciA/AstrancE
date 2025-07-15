@@ -262,8 +262,16 @@ fn init_interrupt() {
         axtask::on_timer_tick();
     });
 
+    axhal::irq::register_handler(, || {
+        update_timer();
+        #[cfg(feature = "multitask")]
+        axtask::on_timer_tick();
+    });
+
     // Enable IRQs before starting app
     axhal::arch::enable_irqs();
+
+
 }
 
 #[cfg(all(feature = "tls", not(feature = "multitask")))]

@@ -12,6 +12,9 @@ use riscv::register::{satp, sstatus, stvec};
 pub use self::context::UspaceContext;
 pub use self::context::{GeneralRegisters, TaskContext, TrapFrame};
 
+#[cfg(feature = "plic")]
+mod plic;
+
 /// Allows the current CPU to respond to interrupts.
 #[inline]
 pub fn enable_irqs() {

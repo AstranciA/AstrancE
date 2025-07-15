@@ -6,7 +6,7 @@ authors = ["Yuekai Jia <equation618@gmail.com>"]
 description = "Top-level feature selection for ArceOS"
 license.workspace = true
 homepage.workspace = true
-repository = "https://github.com/arceos-org/arceos/tree/main/api/axfeat"
+#repository = "https://github.com/arceos-org/arceos/tree/main/api/axfeat"
 documentation = "https://arceos-org.github.io/arceos/axfeat/index.html"
 
 [features]
@@ -20,6 +20,7 @@ fp_simd = ["axhal/fp_simd"]
 
 # Interrupts
 irq = ["axhal/irq", "axruntime/irq", "axtask?/irq"]
+plic = ["irq", "axhal/plic"]
 
 # Memory
 alloc = ["axalloc", "axruntime/alloc"]
