@@ -155,6 +155,17 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     #[cfg(feature = "multitask")]
     axtask::init_scheduler();
 
+    #[cfg(feature = "irq")]
+    {
+        info!("Initialize interrupt handlers...");
+        init_interrupt();
+    }
+
+    #[cfg(all(feature = "tls", not(feature = "multitask")))]
+    {
+        info!("Initialize thread local storage...");
+        init_tls();
+    }
     #[cfg(any(feature = "fs", feature = "net", feature = "display"))]
     {
         #[allow(unused_variables)]
@@ -173,17 +184,6 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     #[cfg(feature = "smp")]
     self::mp::start_secondary_cpus(cpu_id);
 
-    #[cfg(feature = "irq")]
-    {
-        info!("Initialize interrupt handlers...");
-        init_interrupt();
-    }
-
-    #[cfg(all(feature = "tls", not(feature = "multitask")))]
-    {
-        info!("Initialize thread local storage...");
-        init_tls();
-    }
 
     ctor_bare::call_ctors();
 
@@ -257,12 +257,6 @@ fn init_interrupt() {
     }
 
     axhal::irq::register_handler(TIMER_IRQ_NUM, || {
-        update_timer();
-        #[cfg(feature = "multitask")]
-        axtask::on_timer_tick();
-    });
-
-    axhal::irq::register_handler(, || {
         update_timer();
         #[cfg(feature = "multitask")]
         axtask::on_timer_tick();

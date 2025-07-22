@@ -13,7 +13,7 @@ pub use self::context::UspaceContext;
 pub use self::context::{GeneralRegisters, TaskContext, TrapFrame};
 
 #[cfg(feature = "plic")]
-mod plic;
+pub mod plic;
 
 /// Allows the current CPU to respond to interrupts.
 #[inline]

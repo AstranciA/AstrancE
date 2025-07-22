@@ -11,6 +11,7 @@ use axfs::{
 };
 use axprocess::Process;
 use axtask::{TaskExtRef, current};
+use irq::init_proc_interrupts;
 use core::fmt::Write;
 use memory_addr::PAGE_SIZE_4K;
 use axalloc::global_allocator;
@@ -18,6 +19,8 @@ use axhal::mem::{memory_regions, MemRegionFlags};
 use axmm::{backend::VmAreaType, MmapFlags};
 
 use crate::task::{PROCESS_TABLE, ProcessData};
+
+mod irq;
 
 /// 此函数在内部被文件生成器调用，它会一次性创建所有数据，
 fn generate_smaps_content(process: Arc<Process>) -> VfsResult<String> {
@@ -350,7 +353,7 @@ pub fn init_fs() -> VfsResult<()> {
     proc_root.create_dynamic_file("loadavg", create_loadavg_file_generator())?;
     proc_root.create_static_file("mounts", "".as_bytes())?;
 
-    // TODO: 在这里为 /proc/self 添加其他文件，如 "cmdline", "status" 等。
+    init_proc_interrupts();
 
     Ok(())
 }

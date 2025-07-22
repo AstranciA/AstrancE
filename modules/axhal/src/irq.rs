@@ -35,6 +35,16 @@ pub(crate) fn register_handler_common(irq_num: usize, handler: IrqHandler) -> bo
     false
 }
 
+#[allow(dead_code)]
+pub fn register_irq_handler(irq_num: usize, handler: IrqHandler) -> bool {
+    if irq_num < MAX_IRQ_COUNT && IRQ_HANDLER_TABLE.register_handler(irq_num, handler) {
+        set_enable(irq_num, true);
+        return true;
+    }
+    warn!("register handler for IRQ {} failed", irq_num);
+    false
+}
+
 #[register_trap_handler(IRQ)]
 fn handler_irq(irq_num: usize) -> bool {
     let guard = kernel_guard::NoPreempt::new();

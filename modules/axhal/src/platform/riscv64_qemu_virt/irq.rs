@@ -3,6 +3,7 @@
 use crate::irq::IrqHandler;
 use lazyinit::LazyInit;
 use riscv::register::sie;
+use crate::platform::riscv64_qemu_virt::plic;
 
 /// `Interrupt` bit in `scause`
 pub(super) const INTC_IRQ_BASE: usize = 1 << (usize::BITS - 1);
@@ -36,10 +37,9 @@ macro_rules! with_cause {
 }
 
 /// Enables or disables the given IRQ.
-pub fn set_enable(scause: usize, _enabled: bool) {
-    if scause == S_EXT {
-        // TODO: set enable in PLIC
-    }
+pub fn set_enable(irq_num: usize, enabled: bool) {
+    // 只处理外部中断（PLIC）
+    plic::set_enable(irq_num, enabled);
 }
 
 /// Registers an IRQ handler for the given IRQ.
@@ -49,13 +49,19 @@ pub fn set_enable(scause: usize, _enabled: bool) {
 pub fn register_handler(scause: usize, handler: IrqHandler) -> bool {
     with_cause!(
         scause,
-        @TIMER => if !TIMER_HANDLER.is_inited() {
-            TIMER_HANDLER.init_once(handler);
-            true
-        } else {
-            false
+        @TIMER => {
+            // 注册timer handler
+            if !TIMER_HANDLER.is_inited() {
+                TIMER_HANDLER.init_once(handler);
+                true
+            } else {
+                false
+            }
         },
-        @EXT => crate::irq::register_handler_common(scause & !INTC_IRQ_BASE, handler),
+        // @EXT => crate::irq::register_handler_common(scause & !INTC_IRQ_BASE, handler),
+        @EXT => {
+            panic!("don't use this function to register external interrupt handler")
+        }
     )
 }
 
@@ -65,13 +71,14 @@ pub fn register_handler(scause: usize, handler: IrqHandler) -> bool {
 /// up in the IRQ handler table and calls the corresponding handler. If
 /// necessary, it also acknowledges the interrupt controller after handling.
 pub fn dispatch_irq(scause: usize) {
+    warn!("Scause: {:x}", scause);
     with_cause!(
         scause,
         @TIMER => {
             trace!("IRQ: timer");
             TIMER_HANDLER();
         },
-        @EXT => crate::irq::dispatch_irq_common(0), // TODO: get IRQ number from PLIC
+        @EXT => plic::dispatch_irq(0), // 0未用，PLIC claim决定实际号
     );
 }
 
@@ -81,5 +88,7 @@ pub(super) fn init_percpu() {
         sie::set_ssoft();
         sie::set_stimer();
         sie::set_sext();
+        sie::set_sext();
     }
+    plic::init_percpu();
 }
