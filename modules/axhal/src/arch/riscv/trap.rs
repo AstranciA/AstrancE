@@ -45,6 +45,15 @@ fn riscv_trap_handler(tf: &mut TrapFrame, from_user: bool) {
     let scause = scause::read();
     pre_trap(tf, from_user);
     trace!("trap from {:x?}", tf.get_ip());
+    /*
+     *info!(
+     *    "Trap {:?} @ {:#x}:\nstval: 0x{:#x}\n{:#x?}",
+     *    scause.cause(),
+     *    tf.sepc,
+     *    stval::read(),
+     *    tf
+     *);
+     */
     if let Ok(cause) = scause.cause().try_into::<I, E>() {
         // Interrupts modify the value of `stval`, which must be saved before the
         // interrupt is enabled

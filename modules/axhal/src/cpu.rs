@@ -1,5 +1,7 @@
 //! CPU-related operations.
 
+use percpu::percpu_area_base;
+
 #[percpu::def_percpu]
 static CPU_ID: usize = 0;
 

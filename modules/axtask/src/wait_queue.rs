@@ -103,6 +103,28 @@ impl WaitQueue {
         self.cancel_events(curr, false);
     }
 
+    /// Blocks the current task and put it into the wait queue, until the given
+    /// `condition` becomes true.
+    ///
+    /// Note that even other tasks notify this task, it will not wake up until
+    /// the condition becomes true.
+    pub fn do_until<F>(&self, mut condition: F)
+    where
+        F: FnMut() -> bool,
+    {
+        let curr = crate::current();
+        loop {
+            let mut rq = current_run_queue::<NoPreemptIrqSave>();
+            let wq = self.queue.lock();
+            if condition() {
+                break;
+            }
+            rq.blocked_resched(wq);
+            // Preemption may occur here.
+        }
+        self.cancel_events(curr, false);
+    }
+
     /// Blocks the current task and put it into the wait queue, until other tasks
     /// notify it, or the given duration has elapsed.
     #[cfg(feature = "irq")]

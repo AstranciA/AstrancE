@@ -125,6 +125,9 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     info!("Logging is enabled.");
     info!("Primary CPU {} started, dtb = {:#x}.", cpu_id, dtb);
 
+    #[cfg(feature = "fdt")]
+    axhal::platform_init_fdt();
+
     if axhal::trap::SYSCALL.len() > 1 {
         warn!("Multiple syscall handlers are registered");
     }
@@ -155,21 +158,6 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     #[cfg(feature = "multitask")]
     axtask::init_scheduler();
 
-    #[cfg(any(feature = "fs", feature = "net", feature = "display"))]
-    {
-        #[allow(unused_variables)]
-        let all_devices = axdriver::init_drivers();
-
-        #[cfg(feature = "fs")]
-        axfs::init_filesystems(all_devices.block);
-
-        #[cfg(feature = "net")]
-        axnet::init_network(all_devices.net);
-
-        #[cfg(feature = "display")]
-        axdisplay::init_display(all_devices.display);
-    }
-
     #[cfg(feature = "smp")]
     self::mp::start_secondary_cpus(cpu_id);
 
@@ -183,6 +171,21 @@ pub extern "C" fn rust_main(cpu_id: usize, dtb: usize) -> ! {
     {
         info!("Initialize thread local storage...");
         init_tls();
+    }
+
+    #[cfg(any(feature = "fs", feature = "net", feature = "display"))]
+    {
+        #[allow(unused_variables)]
+        let all_devices = axdriver::init_drivers();
+
+        #[cfg(feature = "fs")]
+        axfs::init_filesystems(all_devices.block);
+
+        #[cfg(feature = "net")]
+        axnet::init_network(all_devices.net);
+
+        #[cfg(feature = "display")]
+        axdisplay::init_display(all_devices.display);
     }
 
     ctor_bare::call_ctors();
@@ -262,16 +265,8 @@ fn init_interrupt() {
         axtask::on_timer_tick();
     });
 
-    axhal::irq::register_handler(, || {
-        update_timer();
-        #[cfg(feature = "multitask")]
-        axtask::on_timer_tick();
-    });
-
     // Enable IRQs before starting app
     axhal::arch::enable_irqs();
-
-
 }
 
 #[cfg(all(feature = "tls", not(feature = "multitask")))]

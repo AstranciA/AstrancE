@@ -78,6 +78,12 @@ impl<D> core::ops::Deref for AxDeviceContainer<D> {
     }
 }
 
+impl<D> core::ops::DerefMut for AxDeviceContainer<D> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl<D> Default for AxDeviceContainer<D> {
     fn default() -> Self {
         Self(Default::default())

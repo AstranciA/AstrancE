@@ -16,9 +16,13 @@ pub use self::aspace::AddrSpace;
 pub use self::backend::{
     Backend, FrameTrackerImpl as FrameTracker, FrameTrackerMap, FrameTrackerRef, FrameTrackerWeak,
     TrackedPhysAddr,
+    alloc::{alloc_frame, alloc_nframe},
 };
 pub use aspace::mmap::{MmapFlags, MmapIO, MmapPerm};
-pub use shm::{shm_get, shm_at, shm_dt, shm_ctl, ShmError, ShmSegment, IPC_PRIVATE, IPC_CREAT, IPC_EXCL, IPC_RMID};
+pub use shm::{
+    IPC_CREAT, IPC_EXCL, IPC_PRIVATE, IPC_RMID, ShmError, ShmSegment, shm_at, shm_ctl, shm_dt,
+    shm_get,
+};
 
 use axerrno::{AxError, AxResult};
 use axhal::mem::phys_to_virt;

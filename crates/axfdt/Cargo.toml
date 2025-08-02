@@ -1,0 +1,8 @@
+[package]
+name = "axfdt"
+version = "0.1.0"
+edition = "2024"
+[dependencies]
+fdt = { version = "0.1.5" }
+log = "0.4"
+lazyinit = "0.2"

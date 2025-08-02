@@ -26,7 +26,12 @@ members = [
 version = "0.1.0"
 edition = "2024"
 #authors = ["Yuekai Jia <equation618@gmail.com>", "ZreXoc <zeexoc@outlook.com>", "LEOibyug <y2695719556@outlook.com>"]
-authors = ["Yuekai Jia <equation618@gmail.com>", "ZreXoc <zeexoc@outlook.com>", "MukioXun <3045859462@qq.com>", "LEOibyug <y2695719556@outlook.com>"]
+authors = [
+  "Yuekai Jia <equation618@gmail.com>",
+  "ZreXoc <zeexoc@outlook.com>",
+  "MukioXun <3045859462@qq.com>",
+  "LEOibyug <y2695719556@outlook.com>",
+]
 license = "GPL-3.0-or-later OR Apache-2.0 OR MulanPSL-2.0"
 homepage = "https://github.com/AstranciA/AstrancE"
 documentation = "https://github.com/AstranciA/AstrancE"
@@ -42,7 +47,7 @@ arceos_api = { path = "api/arceos_api" }
 arceos_posix_api = { path = "api/arceos_posix_api" }
 axfeat = { path = "api/axfeat" }
 
-axalloc = { path = "modules/axalloc", features=["page-alloc-4g"] }
+axalloc = { path = "modules/axalloc", features = ["page-alloc-4g"] }
 axconfig = { path = "modules/axconfig" }
 axdisplay = { path = "modules/axdisplay" }
 axdriver = { path = "modules/axdriver" }
@@ -52,9 +57,9 @@ axlog = { path = "modules/axlog" }
 axsignal = { path = "modules/axsignal" }
 axmm = { path = "modules/axmm", features = ["mmap", "heap", "COW"] }
 axnet = { path = "modules/axnet" }
-axns = { path = "modules/axns", features = ["thread-local"]}
+axns = { path = "modules/axns", features = ["thread-local"] }
 #axns = { git = "https://github.com/oscomp/arceos.git", features = [
-  #"thread-local",
+#"thread-local",
 #] }
 axruntime = { path = "modules/axruntime" }
 axsync = { path = "modules/axsync" }
@@ -62,11 +67,12 @@ axtask = { path = "modules/axtask" }
 axdma = { path = "modules/axdma" }
 axsyscall = { path = "ulib/axsyscall" }
 acbat = { path = "modules/acbat" }
-axptr = {path="modules/axptr"}
+axptr = { path = "modules/axptr" }
 syscalls = { git = "https://github.com/jasonwhite/syscalls.git", default-features = false, features = [
   "loongarch64",
   "riscv64",
 ] }
+axfdt = { path = "./crates/axfdt" }
 
 memory_set = { path = "./crates/axmm_crates/memory_set", features = ["RAII"] }
 memory_addr = { path = "./crates/axmm_crates/memory_addr" }
@@ -81,11 +87,11 @@ bitflags = "2.9.0"
 linkme = "0.3.32"
 weak-map = { git = "https://github.com/Starry-OS/weak-map.git" }
 linux-raw-sys = { version = "0.9.4", default-features = false, features = [
-    "no_std",
-    "general",
-    "net",
-    "prctl",
-    "system",
+  "no_std",
+  "general",
+  "net",
+  "prctl",
+  "system",
 ] }
 
 #[patch.crates-io]
@@ -107,8 +113,15 @@ axfs_vfs = { path = "./crates/axfs_crates/axfs_vfs" }
 axfs_devfs = { path = "./crates/axfs_crates/axfs_devfs" }
 axfs_ramfs = { path = "./crates/axfs_crates/axfs_ramfs" }
 lwext4_rust = { path = "./crates/lwext4_rust" }
-cty = { git = "https://github.com/MukioXun/cty.git"}
+cty = { git = "https://github.com/MukioXun/cty.git" }
 
 [patch.'https://github.com/Azure-stars/lwext4_rust.git']
-lwext4_rust={path = "./crates/lwext4_rust"}
+lwext4_rust = { path = "./crates/lwext4_rust" }
 
+
+[patch."https://github.com/arceos-org/axdriver_crates.git"]
+axdriver_base = { path = ".AstrancE/crates/axdriver_crates/axdriver_base" }
+axdriver_block = { path = ".AstrancE/crates/axdriver_crates/axdriver_block" }
+axdriver_net = { path = ".AstrancE/crates/axdriver_crates/axdriver_net" }
+axdriver_pci = { path = ".AstrancE/crates/axdriver_crates/axdriver_pci" }
+axdriver_virtio = { path = ".AstrancE/crates/axdriver_crates/axdriver_virtio" }

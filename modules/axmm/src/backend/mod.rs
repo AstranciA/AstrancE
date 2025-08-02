@@ -8,7 +8,7 @@ use memory_set::MappingBackend;
 
 use crate::{AddrSpace, aspace::mmap::MmapIO, shm::ShmSegment};
 
-pub(super) mod alloc;
+pub mod alloc;
 pub mod frame;
 pub use frame::*;
 mod linear;

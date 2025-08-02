@@ -84,37 +84,49 @@ fn config_pci_device(
 
 impl AllDevices {
     pub(crate) fn probe_bus_devices(&mut self) {
-        let base_vaddr = phys_to_virt(axconfig::devices::PCI_ECAM_BASE.into());
-        let mut root = unsafe { PciRoot::new(base_vaddr.as_mut_ptr(), Cam::Ecam) };
-
-        // PCI 32-bit MMIO space
-        let mut allocator = axconfig::devices::PCI_RANGES
-            .get(1)
-            .map(|range| PciRangeAllocator::new(range.0 as u64, range.1 as u64));
-
-        for bus in 0..=axconfig::devices::PCI_BUS_END as u8 {
-            for (bdf, dev_info) in root.enumerate_bus(bus) {
-                debug!("PCI {}: {}", bdf, dev_info);
-                if dev_info.header_type != HeaderType::Standard {
-                    continue;
+        warn!("probe bus!");
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "fdt")] {
+                warn!("probe with fdt!");
+                if let Some(device_tree) = axfdt::FDT.get() {
+                    for node in device_tree.find_compatible(&["starfive,jh7110-pcie"]) {
+                        debug!("Found StarFive JH7110 PCIe controller node: {}", node.name);
+                    }
                 }
-                match config_pci_device(&mut root, bdf, &mut allocator) {
-                    Ok(_) => for_each_drivers!(type Driver, {
-                        if let Some(dev) = Driver::probe_pci(&mut root, bdf, &dev_info) {
-                            info!(
-                                "registered a new {:?} device at {}: {:?}",
-                                dev.device_type(),
-                                bdf,
-                                dev.device_name(),
-                            );
-                            self.add_device(dev);
-                            continue; // skip to the next device
+            } else {
+                let base_vaddr = phys_to_virt(axconfig::devices::PCI_ECAM_BASE.into());
+                let mut root = unsafe { PciRoot::new(base_vaddr.as_mut_ptr(), Cam::Ecam) };
+
+                // PCI 32-bit MMIO space
+                let mut allocator = axconfig::devices::PCI_RANGES
+                    .get(1)
+                    .map(|range| PciRangeAllocator::new(range.0 as u64, range.1 as u64));
+
+                for bus in 0..=axconfig::devices::PCI_BUS_END as u8 {
+                    for (bdf, dev_info) in root.enumerate_bus(bus) {
+                        debug!("PCI {}: {}", bdf, dev_info);
+                        if dev_info.header_type != HeaderType::Standard {
+                            continue;
                         }
-                    }),
-                    Err(e) => warn!(
-                        "failed to enable PCI device at {}({}): {:?}",
-                        bdf, dev_info, e
-                    ),
+                        match config_pci_device(&mut root, bdf, &mut allocator) {
+                            Ok(_) => for_each_drivers!(type Driver, {
+                                if let Some(dev) = Driver::probe_pci(&mut root, bdf, &dev_info) {
+                                    info!(
+                                        "registered a new {:?} device at {}: {:?}",
+                                        dev.device_type(),
+                                        bdf,
+                                        dev.device_name(),
+                                    );
+                                    self.add_device(dev);
+                                    continue; // skip to the next device
+                                }
+                            }),
+                            Err(e) => warn!(
+                                "failed to enable PCI device at {}({}): {:?}",
+                                bdf, dev_info, e
+                            ),
+                        }
+                    }
                 }
             }
         }

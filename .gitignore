@@ -2,7 +2,7 @@
 /.vscode
 /.idea
 .DS_Store
-*.asm
+/*.asm
 *.img
 *.o
 *.elf

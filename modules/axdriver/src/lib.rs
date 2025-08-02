@@ -64,6 +64,9 @@ extern crate log;
 #[cfg(feature = "dyn")]
 extern crate alloc;
 
+#[cfg(feature = "dyn")]
+use alloc::boxed::Box;
+
 #[macro_use]
 mod macros;
 
@@ -83,6 +86,10 @@ pub mod prelude;
 #[allow(unused_imports)]
 use self::prelude::*;
 pub use self::structs::{AxDeviceContainer, AxDeviceEnum};
+
+use axhal::mem::phys_to_virt;
+use axhal::paging::MappingFlags;
+use axmm::{AddrSpace, kernel_aspace};
 
 #[cfg(feature = "block")]
 pub use self::structs::AxBlockDevice;
@@ -154,31 +161,50 @@ pub fn init_drivers() -> AllDevices {
 
     let mut all_devs = AllDevices::default();
     all_devs.probe();
-
+    let mut aspace = kernel_aspace().lock();
     #[cfg(feature = "net")]
     {
         debug!("number of NICs: {}", all_devs.net.len());
-        for (i, dev) in all_devs.net.iter().enumerate() {
+        for (i, dev) in all_devs.net.iter_mut().enumerate() {
             assert_eq!(dev.device_type(), DeviceType::Net);
-            debug!("  NIC {}: {:?}", i, dev.device_name());
+
+            debug!("init NIC {}: {:?}", i, dev.device_name());
+            dev.init();
         }
     }
     #[cfg(feature = "block")]
     {
         debug!("number of block devices: {}", all_devs.block.len());
-        for (i, dev) in all_devs.block.iter().enumerate() {
+        for (i, dev) in all_devs.block.iter_mut().enumerate() {
             assert_eq!(dev.device_type(), DeviceType::Block);
-            debug!("  block device {}: {:?}", i, dev.device_name());
+            debug!("init block device {}: {:?}", i, dev.device_name());
+            let base = dev.mmio_base();
+            let size = dev.mmio_size();
+            if base != 0 && size != 0 {
+                aspace
+                    .map_linear(
+                        phys_to_virt(dev.mmio_base().into()),
+                        dev.mmio_base().into(),
+                        dev.mmio_size(),
+                        MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE,
+                    )
+                    .unwrap();
+            }
+
+            dev.init();
         }
     }
     #[cfg(feature = "display")]
     {
         debug!("number of graphics devices: {}", all_devs.display.len());
-        for (i, dev) in all_devs.display.iter().enumerate() {
+        for (i, dev) in all_devs.display.iter_mut().enumerate() {
             assert_eq!(dev.device_type(), DeviceType::Display);
-            debug!("  graphics device {}: {:?}", i, dev.device_name());
+            debug!("init graphics device {}: {:?}", i, dev.device_name());
+            dev.init();
         }
     }
 
     all_devs
 }
+
+fn map_mmio(aspace: AddrSpace, dev: &mut Box<dyn BaseDriverOps>) {}

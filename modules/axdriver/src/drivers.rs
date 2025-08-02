@@ -82,6 +82,62 @@ cfg_if::cfg_if! {
 }
 
 cfg_if::cfg_if! {
+    if #[cfg(block_dev = "dw-mshc")]{
+        pub struct DwMshcDriver;
+        register_block_driver!(MmckDriver, axdriver_block::dw_mshc::DwMshcDriver);
+
+        impl DriverProbe for DwMshcDriver {
+            fn probe_global() -> Option<AxDeviceEnum> {
+                debug!("mmc probe dw-mshc");
+
+                axfdt::FDT.get()
+                    .or_else(|| {
+                        warn!("FDT not initialized or available.");
+                        None // 如果 FDT 不可用，则整个过程返回 None
+                    })
+                    .and_then(|device_tree| {
+                        device_tree.find_node("/soc/mmc@16020000") // Option<Node>
+                    })
+                    .or_else(|| {
+                        warn!("cannot find mmc");
+                        None
+                    })
+                    .and_then(|sdhci_node| {
+                        let mut reg_iter = sdhci_node.reg()?;
+
+                        let reg_entry = reg_iter.next()?;
+
+                        let base_address = reg_entry.starting_address as usize;
+                        let size = reg_entry.size?;
+
+                        let irq_number = 33; // Hard-coded from JH7110
+
+                        info!("SD Card Host Controller found at 0x{:x}", base_address);
+
+                        Some(AxDeviceEnum::from_block(
+                            axdriver_block::dw_mshc::DwMshcDriver::new(base_address, size, irq_number)
+                        ))
+                    })
+                /*
+                 *if let Some(device_tree) = axfdt::FDT.get() {
+                 *    // Parse SD Card Host Controller
+                 *    if let Some(sdhci) = device_tree.find_node("/soc/mmc@16020000") {
+                 *        let base_address = sdhci.reg().unwrap().next().unwrap().starting_address as usize;
+                 *        let size = sdhci.reg().unwrap().next().unwrap().size.unwrap();
+                 *        let irq_number = 33; // Hard-coded from JH7110
+                 *        info!("SD Card Host Controller found at 0x{:x}", base_address);
+                 *        return Some(AxDeviceEnum::from_block(
+                 *            axdriver_block::dw_mshc::DwMshcDriver::new(base_address,size,irq_number)
+                 *        ));
+                 *    }
+                 *}
+                 */
+            }
+        }
+    }
+}
+
+cfg_if::cfg_if! {
     if #[cfg(net_dev = "ixgbe")] {
         use crate::ixgbe::IxgbeHalImpl;
         use axhal::mem::phys_to_virt;

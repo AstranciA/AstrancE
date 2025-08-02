@@ -10,6 +10,7 @@
 //! - `riscv64-qemu-virt`: QEMU virt machine with RISC-V ISA.
 //! - `aarch64-qemu-virt`: QEMU virt machine with AArch64 ISA.
 //! - `aarch64-raspi`: Raspberry Pi with AArch64 ISA.
+//! TODO: starfive-visionfive2
 //! - `dummy`: If none of the above platform is selected, the dummy platform
 //!    will be used. In this platform, most of the operations are no-op or
 //!    `unimplemented!()`. This platform is mainly used for [cargo test].
@@ -76,3 +77,6 @@ pub use self::platform::platform_init;
 
 #[cfg(feature = "smp")]
 pub use self::platform::platform_init_secondary;
+
+#[cfg(feature = "fdt")]
+pub use self::platform::platform_init_fdt;

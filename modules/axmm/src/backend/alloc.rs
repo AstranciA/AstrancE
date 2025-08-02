@@ -11,7 +11,7 @@ use crate::{AddrSpace, MmapFlags};
 use super::frame::{FrameTrackerImpl, FrameTrackerMap, FrameTrackerRef};
 use super::{Backend, VmAreaType};
 
-pub(crate) fn alloc_nframe(num_pages: usize, zeroed: bool) -> Option<Vec<FrameTrackerRef>> {
+pub fn alloc_nframe(num_pages: usize, zeroed: bool) -> Option<Vec<FrameTrackerRef>> {
     let mut frames = Vec::with_capacity(num_pages);
     for _ in 0..num_pages {
         if let Some(frame) = alloc_frame(zeroed) {
@@ -36,7 +36,7 @@ pub(crate) fn alloc_nframe(num_pages: usize, zeroed: bool) -> Option<Vec<FrameTr
  *    Some(paddr)
  *}
  */
-pub(crate) fn alloc_frame(zeroed: bool) -> Option<FrameTrackerRef> {
+pub fn alloc_frame(zeroed: bool) -> Option<FrameTrackerRef> {
     let vaddr = VirtAddr::from(global_allocator().alloc_pages(1, PAGE_SIZE_4K).ok()?);
     if zeroed {
         unsafe { core::ptr::write_bytes(vaddr.as_mut_ptr(), 0, PAGE_SIZE_4K) };

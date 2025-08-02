@@ -61,3 +61,6 @@ lib_feat += $(filter $(lib_features),$(FEATURES))
 AX_FEAT := $(strip $(addprefix $(ax_feat_prefix),$(ax_feat)))
 LIB_FEAT := $(strip $(addprefix $(lib_feat_prefix),$(lib_feat)))
 APP_FEAT := $(strip $(shell echo $(APP_FEATURES) | tr ',' ' '))
+
+$(info axfeat: $(AX_FEAT))
+$(info libfeat: $(LIB_FEAT))

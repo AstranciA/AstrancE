@@ -138,6 +138,7 @@ impl AddrSpace {
             return ax_err!(InvalidInput, "address out of range");
         }
         if !start.is_aligned_4k() || !is_aligned_4k(size) {
+            warn!("{start:?}, {size:?}");
             return ax_err!(InvalidInput, "address not aligned");
         }
         Ok(())

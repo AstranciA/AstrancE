@@ -68,7 +68,7 @@ SECTIONS
         _percpu_load_start = .;
         *(.percpu .percpu.*)
         _percpu_load_end = .;
-        . = _percpu_load_start + ALIGN(64) * %SMP%;
+        . = _percpu_load_start + ALIGN(64) * (%SMP% + 1); // add 1 since CPU hartid starts from 1
     }
     . = _percpu_end;
 

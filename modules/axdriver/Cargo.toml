@@ -2,7 +2,10 @@
 name = "axdriver"
 version.workspace = true
 edition.workspace = true
-authors = ["Yuekai Jia <equation618@gmail.com>", "ChengXiang Qi <kuangjux@outlook.com>"]
+authors = [
+  "Yuekai Jia <equation618@gmail.com>",
+  "ChengXiang Qi <kuangjux@outlook.com>",
+]
 description = "ArceOS device drivers"
 license.workspace = true
 homepage.workspace = true
@@ -10,7 +13,7 @@ repository = "https://github.com/arceos-org/arceos/tree/main/modules/axdriver"
 documentation = "https://arceos-org.github.io/arceos/axdriver/index.html"
 
 [features]
-dyn = []
+dyn = ["dep:axmm"]
 bus-mmio = []
 bus-pci = ["dep:axdriver_pci", "dep:axhal", "dep:axconfig"]
 net = ["axdriver_net"]
@@ -26,8 +29,10 @@ virtio-net = ["net", "virtio", "axdriver_virtio/net"]
 virtio-gpu = ["display", "virtio", "axdriver_virtio/gpu"]
 ramdisk = ["block", "axdriver_block/ramdisk"]
 bcm2835-sdhci = ["block", "axdriver_block/bcm2835-sdhci"]
+dw-mshc = ["block", "axdriver_block/dw-mshc", "fdt"]
 ixgbe = ["net", "axdriver_net/ixgbe", "dep:axalloc", "dep:axhal", "dep:axdma"]
 fxmac = ["net", "axdriver_net/fxmac", "dep:axalloc", "dep:axhal", "dep:axdma"]
+fdt = ["dep:axfdt"]
 # more devices example: e1000 = ["net", "axdriver_net/e1000"]
 
 default = ["bus-pci"]
@@ -50,5 +55,7 @@ axdriver_virtio = { git = "https://github.com/arceos-org/axdriver_crates.git", t
 #axdriver_virtio = { workspace = true, tag = "v0.1.2", optional = true }
 axalloc = { workspace = true, optional = true }
 axhal = { workspace = true, optional = true }
+axmm = { workspace = true, optional = true }
 axconfig = { workspace = true, optional = true }
 axdma = { workspace = true, optional = true }
+axfdt = { workspace = true, optional = true }
