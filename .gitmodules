@@ -17,3 +17,6 @@
 [submodule "crates/axdriver_crates"]
 	path = crates/axdriver_crates
 	url = git@github.com:AstranciA/axdriver_crates.git
+[submodule "crates/virtio-drivers"]
+	path = crates/virtio-drivers
+	url = git@github.com:AstranciA/virtio-drivers.git
