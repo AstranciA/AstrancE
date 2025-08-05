@@ -123,6 +123,10 @@ syscall_handler_def!(
                 Ok(0)
         }
 
+        #[cfg(all(feature = "fs", feature = "fd"))]
+        linkat => [old_dirfd, old_path, new_dirfd, new_path, flags, ..] {
+            apply!(syscall_imp::fs::sys_link, old_dirfd, old_path, new_dirfd, new_path, flags)
+        }
 
         #[cfg(all(feature = "fs", target_arch = "x86_64"))]
         unlink => [path_name, flags, ..] {

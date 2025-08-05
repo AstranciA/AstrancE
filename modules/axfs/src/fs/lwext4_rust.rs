@@ -614,6 +614,14 @@ impl VfsNodeOps for FileWrapper {
             .map_err(|e| e.try_into().unwrap())
     }
 
+    fn link(&self, src_path: &str, dst_path: &str) -> VfsResult {
+        let src_path = self.path_deal_with(src_path);
+        let mut file = self.0.lock();
+        file.file_link(src_path.as_str(), dst_path)
+            .map(|_v| ())
+            .map_err(|e| e.try_into().unwrap())
+    }
+
     fn as_any(&self) -> &dyn core::any::Any {
         self as &dyn core::any::Any
     }
