@@ -122,8 +122,15 @@ syscall_handler_def!(
         ioctl =>[fd,op,..]{
                 Ok(0)
         }
+        #[cfg(all(feature = "fs", feature = "fd"))]
+        copy_file_range => [fd_in, off_in, fd_out, off_out, size, flag, ..]{
+            apply!(syscall_imp::fd::sys_cp_file_range, fd_in, off_in, fd_out, off_out, size, flag,)
+        }
 
-
+        #[cfg(all(feature = "fs", feature = "fd"))]
+        splice => [fd_in, off_in, fd_out, off_out, size, flag, ..]{
+            apply!(syscall_imp::fd::sys_splice, fd_in, off_in, fd_out, off_out, size, flag,)
+       }
         #[cfg(all(feature = "fs", target_arch = "x86_64"))]
         unlink => [path_name, flags, ..] {
              apply!(syscall_imp::fs::sys_unlink, path_name, flags)
@@ -133,13 +140,6 @@ syscall_handler_def!(
         unlinkat => [dirfd, path_name, flags, ..] {
              apply!(syscall_imp::fs::sys_unlinkat, dirfd, path_name, flags)
         }
-
-        /* TODO:
-         *#[cfg(all(feature = "fs", feature = "fd"))]
-         *statfs => _args {
-         *    //todo!()
-         *}
-         */
 
         #[cfg(all(feature = "fs", feature = "fd"))]
         chdir => [path, ..] apply!(sys_chdir, path),

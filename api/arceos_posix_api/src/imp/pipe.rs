@@ -236,6 +236,8 @@ impl FileLike for Pipe {
     fn set_nonblocking(&self, _nonblocking: bool) -> LinuxResult {
         Ok(())
     }
+
+    fn is_pipe(&self) -> bool { true }
 }
 
 /// Create a pipe

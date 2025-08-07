@@ -3,6 +3,7 @@ use crate::ctypes;
 use crate::imp::stdio::{stdin, stdout};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use alloc::vec;
 use axerrno::{LinuxError, LinuxResult, ax_err};
 use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsResult};
 use axio::PollState;
@@ -13,7 +14,10 @@ use core::time::Duration;
 use flatten_objects::FlattenObjects;
 use spin::Mutex;
 use spin::{Once, RwLock};
-
+use crate::ctypes::{off_t, size_t, ssize_t};
+use crate::{utils::check_and_read_user_ptr,utils::write_back_user_ptr,
+            utils::copy_to_user, utils::copy_from_user};
+use axio::SeekFrom;
 pub const AX_FILE_LIMIT: usize = 1024;
 
 static FILE_LIMIT: Mutex<(usize, usize)> = Mutex::new((AX_FILE_LIMIT, AX_FILE_LIMIT));
@@ -106,6 +110,16 @@ pub trait FileLike: Send + Sync {
     fn set_atime(&self, atime: u32, atime_n: u32) -> LinuxResult<usize> {
         warn!("Unsupport set_atime for this type");
         Ok(0)
+    }
+
+    fn seek(&self, pos: SeekFrom) -> LinuxResult<u64> {
+        warn!("Unsupport seek for this type");
+        Ok(0)
+    }
+
+    fn is_pipe(&self) -> bool {
+        warn!("Unsupport is_pipe for this type");
+        false
     }
 }
 
@@ -403,6 +417,195 @@ fn poll_once(fds: *mut ctypes::pollfd, nfds: ctypes::nfds_t) -> LinuxResult<usiz
     }
 
     Ok(ready_count)
+}
+
+pub fn copy_file_range(
+    fd_in: c_int,
+    off_in: Option<*mut off_t>,
+    fd_out: c_int,
+    off_out: Option<*mut off_t>,
+    size: size_t,
+    flags: u32,
+) -> Result<isize, LinuxError> {
+    if flags != 0 {
+        return Err(LinuxError::EINVAL);
+    }
+    let mut src = get_file_like(fd_in)?;
+    let mut dst = get_file_like(fd_out)?;
+
+    // TODO: 检查是否是可读/写
+    // if !src.readable() || !dst.writable() {
+    //     return Err(LinuxError::EBADF);
+    // }
+
+    let mut in_offset = if let Some(off_ptr) = off_in {
+        let offset = check_and_read_user_ptr(off_ptr)?; // 用户提供 offset，系统不更新文件 offset
+        Some(offset)
+    } else {
+        None // 使用文件自身偏移
+    };
+    let mut out_offset = if let Some(off_ptr) = off_out {
+        let offset = check_and_read_user_ptr(off_ptr)?;
+        Some(offset)
+    } else {
+        None
+    };
+    // 临时缓冲区
+    const CHUNK_SIZE: usize = 4096;
+    let mut total_copied = 0;
+    let mut buffer = [0u8; CHUNK_SIZE];
+
+    while total_copied < size {
+        let to_read = core::cmp::min(CHUNK_SIZE, size - total_copied);
+
+        // 读取 offset（处理 Option<i64>）
+        let read_off = match in_offset {
+            Some(v) => { if v < 0 { return Err(LinuxError::EINVAL); } v as u64 }
+            None => src.seek(SeekFrom::Current(0))?,
+        };
+
+        let read_len = src.read_at(&mut buffer[..to_read], read_off)?;
+        if read_len == 0 {break; }  // EOF
+
+        let write_off = match out_offset {
+            Some(v) => {if v < 0 { return Err(LinuxError::EINVAL); } v as u64 }
+            None => dst.seek(SeekFrom::Current(0))?,
+        };
+
+        let written = dst.write_at(&buffer[..read_len], write_off)?;
+        if written == 0 { break;}
+
+        total_copied += written;
+
+        // 更新 offset 变量
+        if let Some(off) = in_offset.as_mut() {
+            *off += written as i64;
+        } else {
+            src.seek(SeekFrom::Current(written as i64))?; // 修改文件 offset
+        }
+
+        if let Some(off) = out_offset.as_mut() {
+            *off += written as i64;
+        } else {
+            dst.seek(SeekFrom::Current(written as i64))?;
+        }
+    }
+
+    // 如果偏移指针是 Some，则写回修改后的偏移量
+    if let Some(off_ptr) = off_in {
+        write_back_user_ptr(off_ptr, in_offset.unwrap())?;
+    }
+    if let Some(off_ptr) = off_out {
+        write_back_user_ptr(off_ptr, out_offset.unwrap())?;
+    }
+
+    Ok(total_copied as isize)
+}
+
+pub fn splice(
+    fd_in: c_int,
+    off_in: Option<*mut off_t>,
+    fd_out: c_int,
+    off_out: Option<*mut off_t>,
+    len: size_t,
+    flags: u32,
+) -> Result<isize, LinuxError> {
+    const PIPE_BUF_SIZE: usize = 256;
+    if len == 0 {
+        debug!("The length of the buffer is 0");
+        return Ok(0);
+    }
+
+    let file_in = get_file_like(fd_in)?;
+    let file_out = get_file_like(fd_out)?;
+
+    // 判断是否是管道
+    let is_pipe_in = file_in.is_pipe();
+    let is_pipe_out = file_out.is_pipe();
+    debug!("splice: is_pipe_in = {}, is_pipe_out = {}", is_pipe_in, is_pipe_out);
+
+    // splice 要求：必须一个是管道，另一个是普通文件
+    if is_pipe_in == is_pipe_out {
+        return Err(LinuxError::EINVAL);
+    }
+
+    let off_in_is_null = off_in.map_or(true, |p| p.is_null());
+    let off_out_is_null = off_out.map_or(true, |p| p.is_null());
+
+    if (is_pipe_in && !off_in_is_null) || (!is_pipe_in && off_in_is_null) {
+        warn!("splice: invalid off_in for is_pipe_in={}", is_pipe_in);
+        return Err(LinuxError::EINVAL);
+    }
+    if (is_pipe_out && !off_out_is_null) || (!is_pipe_out && off_out_is_null) {
+        warn!("splice: invalid off_out for is_pipe_out={}", is_pipe_out);
+        return Err(LinuxError::EINVAL);
+    }
+    // // 检查偏移合法性
+    // if (is_pipe_in && off_in.is_some()) || (!is_pipe_in && off_in.is_none()) {
+    //     return Err(LinuxError::EINVAL);
+    // }
+    // if (is_pipe_out && off_out.is_some()) || (!is_pipe_out && off_out.is_none()) {
+    //     return Err(LinuxError::EINVAL);
+    // }
+
+    let mut offset_in = match (is_pipe_in, off_in) {
+        (true, _) => 0,
+        (false, Some(ptr)) if !ptr.is_null() => {
+            let val = check_and_read_user_ptr(ptr)?;
+            if val < 0 {
+                return Err(LinuxError::EINVAL);
+            }
+            let file_size = file_in.stat().map_err(|_| LinuxError::EIO)?.st_size;
+            debug!("got stat.st_size = {}", file_size);
+            if val >= file_size{
+                debug!("the val is larger than the file_size of {}", val);
+                return Ok(0);
+            }
+            val as u64
+        }
+        _ => return Err(LinuxError::EFAULT),
+    };
+
+    let mut offset_out = if !is_pipe_out {
+        let off_ptr = off_out.unwrap();
+        check_and_read_user_ptr(off_ptr)? as u64
+    } else {
+        0
+    };
+
+    let buf_len = len.min(PIPE_BUF_SIZE);
+    let mut buffer = vec![0u8; buf_len];
+
+    // 读入数据
+    let bytes_read = if is_pipe_in {
+        file_in.read(&mut buffer)?
+    } else {
+        file_in.read_at(&mut buffer, offset_in)?
+    };
+
+    if bytes_read == 0 {
+        debug!("the buffer is empty");
+        return Ok(0);
+    }
+
+    // 写出数据
+    let bytes_written = if is_pipe_out {
+        file_out.write(&buffer[..bytes_read])?
+    } else {
+        file_out.write_at(&buffer[..bytes_read], offset_out)?
+    };
+
+    // 更新偏移
+    if !is_pipe_in {
+        let new_offset = offset_in + bytes_written as u64;
+        unsafe {copy_to_user(off_in.unwrap(), &(new_offset as off_t))?;}
+    }
+    if !is_pipe_out {
+        let new_offset = offset_out + bytes_written as u64;
+        unsafe {copy_to_user(off_out.unwrap(), &(new_offset as off_t))?;}
+    }
+
+    Ok(bytes_written as isize)
 }
 
 #[ctor_bare::register_ctor]

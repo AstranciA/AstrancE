@@ -178,6 +178,10 @@ impl FileLike for File {
         let name_len = get_c_string_length(name.clone());
         Ok(self.inner.lock().remove_xattr(name, name_len)?)
     }
+
+    fn seek(&self, pos: SeekFrom) -> LinuxResult<u64> {
+        Ok(self.inner.lock().seek(pos)?)
+    }
 }
 
 fn attr2stat(metadata: VfsNodeAttr) -> ctypes::stat {
@@ -917,12 +921,6 @@ impl FileLike for Directory {
     fn write(&self, _buf: &[u8]) -> LinuxResult<usize> {
         Err(LinuxError::EBADF)
     }
-
-    /*
-     *fn stat(&self) -> LinuxResult<ctypes::stat> {
-     *    Err(LinuxError::EBADF)
-     *}
-     */
 
     fn stat(&self) -> LinuxResult<ctypes::stat> {
         let metadata = self.inner.lock().get_attr()?;

@@ -4,6 +4,7 @@
 use alloc::vec::Vec;
 use axerrno::{LinuxError, LinuxResult};
 use core::ffi::{CStr, c_char};
+use crate::ctypes::off_t;
 
 /// Convert a C string to a Rust string
 pub fn char_ptr_to_str<'a>(str: *const c_char) -> LinuxResult<&'a str> {
@@ -38,6 +39,47 @@ pub unsafe fn str_to_cstr(s: &str, buf: *mut c_char) -> usize {
     dst[..len].copy_from_slice(src);
     dst[len] = (b'\0') as c_char;
     len + 1
+}
+
+/*
+todo：validate_ptr
+*/
+pub(crate) fn check_and_read_user_ptr(ptr: *mut off_t) -> Result<off_t, LinuxError> {
+    // 检查用户态指针合法性，然后读取值
+    if ptr.is_null() {
+        return Err(LinuxError::EFAULT);
+    }
+    // validate_ptr(ptr as usize, core::mem::size_of::<off_t>(), AccessType::Read)?;
+    unsafe { Ok(*ptr) }
+}
+
+pub(crate) fn write_back_user_ptr(ptr: *mut off_t, val: off_t) -> Result<(), LinuxError> {
+    // validate_ptr(ptr as usize, core::mem::size_of::<off_t>(), AccessType::Write)?;
+    unsafe {
+        *ptr = val;
+    }
+    Ok(())
+}
+
+pub unsafe fn copy_to_user<T: Copy>(dst: *mut T, src: &T) -> Result<(), LinuxError> {
+    if dst.is_null() {
+        return Err(LinuxError::EFAULT);
+    }
+    // SAFETY: 调用者应保证 dst 指向合法用户地址
+    unsafe {
+        dst.write_volatile(*src);
+    }
+    Ok(())
+}
+
+pub unsafe fn copy_from_user<T: Copy>(dst: &mut T, src: *const T) -> Result<(), LinuxError> {
+    if src.is_null() {
+        return Err(LinuxError::EFAULT);
+    }
+    unsafe {
+        *dst = src.read_volatile();
+    }
+    Ok(())
 }
 
 pub fn check_null_ptr<T>(ptr: *const T) -> LinuxResult {
