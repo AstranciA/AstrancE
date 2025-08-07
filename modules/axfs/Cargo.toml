@@ -20,7 +20,10 @@ myfs = ["dep:crate_interface"]
 use-ramdisk = []
 dyn = ["axdriver/dyn"]
 
-default = ["devfs", "ramfs", "fatfs", "procfs", "sysfs"]
+dynfs = ["dynfs_shm"]
+dynfs_shm = ["axmm/shm"]
+
+default = ["devfs", "ramfs", "fatfs", "procfs", "sysfs", "dynfs"]
 
 [dependencies]
 log = "=0.4.21"
@@ -42,6 +45,8 @@ axdriver_block = { git = "https://github.com/arceos-org/axdriver_crates.git", ta
 lwext4_rust = { workspace = true,  optional = true , features = ["print"] }
 axns = { workspace = true }
 axconfig = { workspace = true }
+
+axmm = {workspace = true, optional = true}
 
 [dependencies.fatfs]
 git = "https://github.com/rafalh/rust-fatfs"

@@ -26,6 +26,8 @@
 extern crate log;
 extern crate alloc;
 
+mod dyn_fs;
+
 use alloc::{
     collections::BTreeMap,
     format,

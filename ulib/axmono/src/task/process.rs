@@ -222,7 +222,7 @@ pub fn clone_task(
     // new task with same ip and sp of current task
     let mut trap_frame = read_trapframe_from_kstack(curr.get_kernel_stack_top().unwrap());
 
-    let mut current_aspace = current_task_ext.process_data().aspace.lock();
+    let mut current_aspace = current_task_ext.process_data().aspace.clone();
 
     if from_umode {
         trap_frame.set_ret_code(0);
@@ -259,7 +259,7 @@ pub fn clone_task(
     let process = if flags.contains(CloneFlags::THREAD) {
         new_task
             .ctx_mut()
-            .set_page_table_root(current_aspace.page_table_root());
+            .set_page_table_root(current_aspace.lock().page_table_root());
 
         curr.task_ext().thread.process()
     } else {
@@ -274,15 +274,16 @@ pub fn clone_task(
         };
         let builder = parent.fork(tid);
         let aspace = if flags.contains(CloneFlags::VM) {
-            curr.task_ext().process_data().aspace.clone()
+            current_aspace
         } else {
             #[cfg(feature = "COW")]
-            let mut aspace = current_aspace.clone_on_write()?;
+            let mut aspace = current_aspace.lock().clone_on_write()?;
             #[cfg(not(feature = "COW"))]
             let mut aspace = current_aspace.clone_or_err()?;
             copy_from_kernel(&mut aspace)?;
             Arc::new(Mutex::new(aspace))
         };
+
         new_task
             .ctx_mut()
             .set_page_table_root(aspace.lock().page_table_root());

@@ -449,6 +449,15 @@ syscall_handler_def!(
         fchownat => _ {
             Ok(0)
         }
+        fchmod => _ {
+            Ok(0)
+        }
+        fchmodat => _ {
+            Ok(0)
+        }
+        faccessat => _ {
+            Ok(0)
+        }
         futex => [uaddr, futex_op, val, timeout, uaddr2, val3, ..] {
             error!("exit futex");
             axmono::task::sys_exit(-1 as i32);

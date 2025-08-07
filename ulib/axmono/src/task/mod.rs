@@ -10,8 +10,8 @@ use weak_map::WeakMap;
 use axerrno::{AxResult, LinuxError, LinuxResult};
 use axfs::api::set_current_dir;
 use axhal::{
-    time::{NANOS_PER_MICROS, NANOS_PER_SEC, monotonic_time_nanos},
-    trap::{POST_TRAP, PRE_TRAP, register_trap_handler},
+    time::{monotonic_time_nanos, wall_time_nanos, NANOS_PER_MICROS, NANOS_PER_SEC},
+    trap::{register_trap_handler, POST_TRAP, PRE_TRAP},
 };
 use axprocess::{Pid, Process, ProcessGroup, Session, Thread};
 use axsignal::{SignalContext, SignalSet, SignalStackType};
@@ -197,6 +197,7 @@ pub fn spawn_user_task(
         signal: spawn_signal_ctx()
     };
     let thread = process.new_thread(tid).data(thread_data).build();
+    add_thread_to_table(&thread);
 
     task.init_task_ext(TaskExt::new(thread));
 
@@ -233,6 +234,8 @@ pub(crate) static SESSION_TABLE: RwLock<WeakMap<Pid, Weak<Session>>> = RwLock::n
 pub fn add_thread_to_table(thread: &Arc<Thread>) {
     let mut thread_table = THREAD_TABLE.write();
     thread_table.insert(thread.tid(), thread);
+    warn!("add thread: {:?}", thread.tid());
+    warn!("{:?}", thread_table);
 
     let mut process_table = PROCESS_TABLE.write();
     let process = thread.process();

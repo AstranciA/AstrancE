@@ -19,6 +19,7 @@ irq = ["axfeat/irq", "axtask?/sched_rr"]
 syscalls = ["dep:syscalls"]
 heap = ["axmm/heap"]
 mmap = ["axmm/mmap"]
+shm = ["axmm/shm"]
 sig = ["dep:axsignal"]
 [dependencies]
 page_table_entry = { workspace = true }

@@ -82,6 +82,11 @@ axfs_vfs = { path = "./crates/axfs_crates/axfs_vfs" }
 axfs_devfs = { path = "./crates/axfs_crates/axfs_devfs" }
 axfs_ramfs = { path = "./crates/axfs_crates/axfs_ramfs" }
 axfs_procfs = { path = "./crates/axfs_crates/axfs_procfs" }
+axdriver_base = { path = "./crates/axdriver_crates/axdriver_base" }
+axdriver_block = { path = "./crates/axdriver_crates/axdriver_block" }
+axdriver_net = { path = "./crates/axdriver_crates/axdriver_net" }
+axdriver_pci = { path = "./crates/axdriver_crates/axdriver_pci" }
+axdriver_virtio = { path = "./crates/axdriver_crates/axdriver_virtio" }
 lwext4_rust = { path = "./crates/lwext4_rust", default-features = false }
 bitflags = "2.9.0"
 linkme = "0.3.32"
@@ -120,8 +125,8 @@ lwext4_rust = { path = "./crates/lwext4_rust" }
 
 
 [patch."https://github.com/arceos-org/axdriver_crates.git"]
-axdriver_base = { path = ".AstrancE/crates/axdriver_crates/axdriver_base" }
-axdriver_block = { path = ".AstrancE/crates/axdriver_crates/axdriver_block" }
-axdriver_net = { path = ".AstrancE/crates/axdriver_crates/axdriver_net" }
-axdriver_pci = { path = ".AstrancE/crates/axdriver_crates/axdriver_pci" }
-axdriver_virtio = { path = ".AstrancE/crates/axdriver_crates/axdriver_virtio" }
+axdriver_base = { path = "./crates/axdriver_crates/axdriver_base" }
+axdriver_block = { path = "./crates/axdriver_crates/axdriver_block" }
+axdriver_net = { path = "./crates/axdriver_crates/axdriver_net" }
+axdriver_pci = { path = "./crates/axdriver_crates/axdriver_pci" }
+axdriver_virtio = { path = "./crates/axdriver_crates/axdriver_virtio" }
