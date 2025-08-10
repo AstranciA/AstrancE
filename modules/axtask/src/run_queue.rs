@@ -667,3 +667,9 @@ pub(crate) fn init_secondary() {
         RUN_QUEUES[cpu_id].write(RUN_QUEUE.current_ref_mut_raw());
     }
 }
+
+//get the length of current running queue
+// pub fn get_run_queue_length<G: BaseGuard>() -> usize {
+//     let mut run_queue = current_run_queue::<G>();
+//     run_queue.inner.scheduler.lock().len()
+// }

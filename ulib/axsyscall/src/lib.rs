@@ -15,6 +15,7 @@ mod syscall_imp;
 use arceos_posix_api::ctype_my::statx;
 use arceos_posix_api::ctypes::{pid_t, timespec, timeval};
 use arceos_posix_api::{ctypes, sys_listxattr, sys_pread64, sys_pwrite64};
+use arceos_posix_api::SysInfo;
 use axhal::paging::MappingFlags;
 use axmono::validate_ptr;
 use core::ffi::*;
@@ -368,6 +369,9 @@ syscall_handler_def!(
         uname => [buf, ..] apply!(sys_uname, buf),
         ioctl=>_{
             Ok(0)
+        }
+        sysinfo => [buf, ..] {
+            apply!(syscall_imp::sys::sys_sysinfo, buf)
         }
         //网络相关
         #[cfg(feature = "net")]
