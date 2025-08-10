@@ -91,3 +91,6 @@ pub fn platform_init() {}
 /// Initializes the platform devices for secondary CPUs.
 #[cfg(feature = "smp")]
 pub fn platform_init_secondary() {}
+
+#[cfg(feature = "fdt")]
+pub fn platform_init_fdt() -> Result<(), axfdt::FdtError>{}

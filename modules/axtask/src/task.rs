@@ -36,6 +36,7 @@ pub enum TaskState {
 }
 
 /// The inner task structure.
+#[cfg_attr(target_arch = "loongarch64", repr(C))]
 pub struct TaskInner {
     id: TaskId,
     name: UnsafeCell<String>,
@@ -235,32 +236,80 @@ impl TaskInner {
 // private methods
 impl TaskInner {
     fn new_common(id: TaskId, name: String) -> Self {
-        Self {
+        let name = UnsafeCell::new(name);
+        let state = AtomicU8::new(TaskState::Ready as u8);
+        let cpumask = SpinNoIrq::new(AxCpuMask::full());
+
+        let in_wait_queue = AtomicBool::new(false);
+        #[cfg(feature = "irq")]
+        let timer_ticket_id = AtomicU64::new(0);
+        #[cfg(feature = "smp")]
+        let on_cpu = AtomicBool::new(false);
+        #[cfg(feature = "preempt")]
+        let need_resched = AtomicBool::new(false);
+        #[cfg(feature = "preempt")]
+        let preempt_disable_count = AtomicUsize::new(0);
+        let exit_code = AtomicI32::new(0);
+        let wait_for_exit = WaitQueue::new();
+        let ctx = UnsafeCell::new(TaskContext::new());
+        let task_ext = AxTaskExt::empty();
+        let tls = TlsArea::alloc();
+        warn!("111");
+        let a = Self {
             id,
-            name: UnsafeCell::new(name),
+            name,
             is_idle: false,
             is_init: false,
             entry: None,
-            state: AtomicU8::new(TaskState::Ready as u8),
+            state,
             // By default, the task is allowed to run on all CPUs.
-            cpumask: SpinNoIrq::new(AxCpuMask::full()),
-            in_wait_queue: AtomicBool::new(false),
+            cpumask,
+            in_wait_queue,
             #[cfg(feature = "irq")]
-            timer_ticket_id: AtomicU64::new(0),
+            timer_ticket_id,
             #[cfg(feature = "smp")]
-            on_cpu: AtomicBool::new(false),
+            on_cpu,
             #[cfg(feature = "preempt")]
-            need_resched: AtomicBool::new(false),
+            need_resched,
             #[cfg(feature = "preempt")]
-            preempt_disable_count: AtomicUsize::new(0),
-            exit_code: AtomicI32::new(0),
-            wait_for_exit: WaitQueue::new(),
+            preempt_disable_count,
+            exit_code,
+            wait_for_exit,
             kstack: None,
-            ctx: UnsafeCell::new(TaskContext::new()),
-            task_ext: AxTaskExt::empty(),
-            #[cfg(feature = "tls")]
-            tls: TlsArea::alloc(),
-        }
+            ctx,
+            task_ext,
+            tls,
+        };
+        warn!("112");
+        /*
+         *let a = Self {
+         *    id,
+         *    name: UnsafeCell::new(name),
+         *    is_idle: false,
+         *    is_init: false,
+         *    entry: None,
+         *    state: AtomicU8::new(TaskState::Ready as u8),
+         *    // By default, the task is allowed to run on all CPUs.
+         *    cpumask: SpinNoIrq::new(AxCpuMask::full()),
+         *    in_wait_queue: AtomicBool::new(false),
+         *    #[cfg(feature = "irq")]
+         *    timer_ticket_id: AtomicU64::new(0),
+         *    #[cfg(feature = "smp")]
+         *    on_cpu: AtomicBool::new(false),
+         *    #[cfg(feature = "preempt")]
+         *    need_resched: AtomicBool::new(false),
+         *    #[cfg(feature = "preempt")]
+         *    preempt_disable_count: AtomicUsize::new(0),
+         *    exit_code: AtomicI32::new(0),
+         *    wait_for_exit: WaitQueue::new(),
+         *    kstack: None,
+         *    ctx: UnsafeCell::new(TaskContext::new()),
+         *    task_ext: AxTaskExt::empty(),
+         *    #[cfg(feature = "tls")]
+         *    tls: TlsArea::alloc(),
+         *};
+         */
+        a
     }
 
     /// Creates an "init task" using the current CPU states, to use as the
