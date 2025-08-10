@@ -19,6 +19,8 @@ use axmm::{backend::VmAreaType, MmapFlags};
 
 use crate::task::{PROCESS_TABLE, ProcessData};
 
+mod irqs;
+
 /// 此函数在内部被文件生成器调用，它会一次性创建所有数据，
 fn generate_smaps_content(process: Arc<Process>) -> VfsResult<String> {
     let aspace = process
@@ -349,6 +351,8 @@ pub fn init_fs() -> VfsResult<()> {
     // === /proc/loadavg ===
     proc_root.create_dynamic_file("loadavg", create_loadavg_file_generator())?;
     proc_root.create_static_file("mounts", "".as_bytes())?;
+
+    irqs::init_proc_interrupts();
 
     // TODO: 在这里为 /proc/self 添加其他文件，如 "cmdline", "status" 等。
 
