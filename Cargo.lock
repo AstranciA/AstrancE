@@ -1472,6 +1472,7 @@ version = "0.3.2"
 name = "memory_set"
 version = "0.3.2"
 dependencies = [
+ "log",
  "memory_addr",
 ]
 

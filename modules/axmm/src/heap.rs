@@ -1,8 +1,9 @@
-use crate::AddrSpace;
+use crate::{AddrSpace, backend::VmAreaType, filter_areas_by_va_type};
+use alloc::vec::Vec;
 use axhal::mem::PAGE_SIZE_4K;
 use axhal::paging::MappingFlags;
 use core::sync::atomic::{AtomicUsize, Ordering};
-use memory_addr::{MemoryAddr, VirtAddr};
+use memory_addr::{MemoryAddr, VirtAddr, VirtAddrRange};
 
 #[derive(Debug)]
 pub struct HeapSpace {
@@ -32,6 +33,11 @@ impl HeapSpace {
         VirtAddr::from_usize(self.heap_base)
     }
 
+    /// 将base-0x1000作为base, 以防止bug: 堆大小为0；mmap和堆首地址冲突
+    pub fn area_base(&self) -> VirtAddr {
+        VirtAddr::from_usize(self.heap_base).wrapping_sub(0x1000)
+    }
+
     pub fn max_size(&self) -> usize {
         self.max_heap_size
     }
@@ -44,7 +50,7 @@ impl HeapSpace {
         assert!(
             (top < self.base().offset(self.max_heap_size as isize)) && (top >= self.base()),
             "heap top must be in [{:x}, {:x}), but get {top:x}",
-            self.heap_base,
+            self.area_base(),
             self.heap_base + self.max_heap_size
         );
 
@@ -71,10 +77,11 @@ impl AddrSpace {
         // alloc a page to avoid zero size area.
         // FIXME: lazy alloc
         self.map_alloc(
-            heap.base(),
+            heap.area_base(),
             PAGE_SIZE_4K,
             MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
-            true,
+            false,
+            VmAreaType::Heap,
         )
         .expect("heap mapping failed");
         self.heap = Some(heap);
@@ -86,21 +93,46 @@ impl AddrSpace {
 
     pub fn set_heap_top(&mut self, top: VirtAddr) -> VirtAddr {
         let heap = self.heap();
+        let top = top.align_up_4k();
         debug!("setting heap top from {:?} to {:?}", heap.top(), top);
-        if top != self.heap().top() {
+        let old_top = heap.top();
+        if top > old_top {
             self.heap().set_heap_top(top);
-            // TODO: wrong flags if area is taken place by mmap!!!
+            let last = filter_areas_by_va_type!(self, Heap)
+                .last()
+                .unwrap()
+                .va_range();
+            assert_eq!(last.end, old_top);
             self.areas
-                .adjust_area(
-                    heap.base(),
-                    heap.base(),
-                    top.align_up_4k(),
-                    &mut self.pt,
-                )
-                .unwrap();
+                .adjust_area(last.start, last.start, top, &mut self.pt);
+        } else if top < old_top {
+            self.heap().set_heap_top(top);
+            // 由于mmap, 可能有多个不连续的Heap段，这里找到最后一个然后扩展/缩小。
+            let areas: Vec<(VirtAddrRange, bool)> = filter_areas_by_va_type!(self, Heap)
+                .filter_map(|area| {
+                    let va_range = area.va_range();
+                    if va_range.end < top {
+                        None
+                    } else if va_range.start >= top {
+                        Some((va_range, true))
+                    } else {
+                        Some((va_range, false))
+                    }
+                })
+                .collect();
+            for (va_range, unmap) in areas {
+                if unmap {
+                    self.unmap(va_range.start, va_range.size()).unwrap();
+                } else {
+                    self.areas
+                        .adjust_area(va_range.start, va_range.start, top, &mut self.pt)
+                        .unwrap();
+                }
+            }
         }
         top
     }
+
     pub fn set_heap_size(&mut self, size: usize) -> VirtAddr {
         let heap_base = self.heap().base();
         self.set_heap_top(heap_base + size)

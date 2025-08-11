@@ -3,15 +3,17 @@ use axhal::mem::phys_to_virt;
 use axhal::paging::{MappingFlags, PageTable, PagingError};
 use core::fmt;
 use memory_addr::{
-    MemoryAddr, PAGE_SIZE_4K, PageIter4K, PhysAddr, VirtAddr, VirtAddrRange, is_aligned_4k,
+    FrameTracker, MemoryAddr, PAGE_SIZE_4K, PageIter4K, PhysAddr, VirtAddr, VirtAddrRange,
+    is_aligned_4k,
 };
 use memory_set::{MappingBackend, MemoryArea, MemorySet};
+use page_table_multiarch::PageSize;
 
 #[cfg(feature = "mmap")]
 pub mod mmap;
 
-use crate::backend::Backend;
 use crate::backend::frame::FrameTrackerRef;
+use crate::backend::{Backend, VmAreaType};
 use crate::heap::HeapSpace;
 use crate::mapping_err_to_ax_err;
 
@@ -77,6 +79,16 @@ impl AddrSpace {
         })
     }
 
+    pub fn filter_areas<F>(
+        &mut self,
+        filter_fn: F,
+    ) -> core::iter::Filter<impl Iterator<Item = &mut MemoryArea<Backend>>, F>
+    where
+        F: FnMut(&&mut MemoryArea<Backend>) -> bool,
+    {
+        self.areas.iter_mut().filter(filter_fn)
+    }
+
     pub fn find_frame(&self, vaddr: VirtAddr) -> Option<FrameTrackerRef> {
         self.areas.find_frame(vaddr)
     }
@@ -138,7 +150,6 @@ impl AddrSpace {
             return ax_err!(InvalidInput, "address out of range");
         }
         if !start.is_aligned_4k() || !is_aligned_4k(size) {
-            warn!("{start:?}, {size:?}");
             return ax_err!(InvalidInput, "address not aligned");
         }
         Ok(())
@@ -200,10 +211,17 @@ impl AddrSpace {
         size: usize,
         flags: MappingFlags,
         populate: bool,
+        va_type: VmAreaType,
     ) -> AxResult {
         self.validate_region(start, size)?;
 
-        let area = MemoryArea::new(start, size, None, flags, Backend::new_alloc(populate));
+        let area = MemoryArea::new(
+            start,
+            size,
+            None,
+            flags,
+            Backend::new_alloc(populate, va_type),
+        );
         self.areas
             .map(area, &mut self.pt, false, None)
             .map_err(mapping_err_to_ax_err)?;
@@ -275,7 +293,7 @@ impl AddrSpace {
     /// To remove user area mappings from address space.
     pub fn unmap_user_areas(&mut self) -> AxResult {
         for area in self.areas.iter() {
-            warn!("range:{:?} flag: {:?}", area.va_range(), area.flags());
+            debug!("unmap: range:{:?} flag: {:?}", area.va_range(), area.flags());
             assert!(area.start().is_aligned_4k());
             assert!(area.size() % PAGE_SIZE_4K == 0);
             assert!(area.flags().contains(MappingFlags::USER));
@@ -440,7 +458,7 @@ impl AddrSpace {
         mut range: VirtAddrRange,
         access_flags: MappingFlags,
     ) -> bool {
-        let access_flags  = MappingFlags::unmark_cow(access_flags);
+        let access_flags = MappingFlags::unmark_cow(access_flags);
         // TODO: COW
         for area in self.areas.iter() {
             // warn!("{range:?} {access_flags:?}  {area:?}");
@@ -477,8 +495,8 @@ impl AddrSpace {
         }
         if let Some(area) = self.areas.find(vaddr) {
             let orig_flags = area.flags();
-            trace!("Page fault area flags: {:?}", orig_flags);
-            trace!("Page fault pte flags: {:?}", self.pt.query(vaddr));
+            debug!("Page fault area flags: {:?}", orig_flags);
+            debug!("Page fault pte flags: {:?}", self.pt.query(vaddr));
 
             if orig_flags.contains(access_flags) {
                 return area
@@ -590,9 +608,17 @@ impl AddrSpace {
             debug!("copying : {:?}", area);
             // Remap the memory area in new address space.
             // area keeps the origin flags but pt flags will be marked as COW
+            let skip_overlap_check = match area.backend() {
+                Backend::Alloc { va_type, .. } => match va_type {
+                    VmAreaType::Mmap(_) => true,
+                    VmAreaType::Shm(_) => true,
+                    _ => false,
+                },
+                _ => false,
+            };
             new_aspace
                 .areas
-                .insert(area.clone(), false)
+                .insert(area.clone(), skip_overlap_check)
                 .map_err(mapping_err_to_ax_err)?;
 
             let mut pte_flags = area.flags();
@@ -601,10 +627,9 @@ impl AddrSpace {
                 match area.backend() {
                     Backend::Alloc { va_type, populate } => match va_type {
                         VmAreaType::Mmap(mmio) => !mmio.flags().contains(MmapFlags::MAP_SHARED),
-                        VmAreaType::Normal => true,
-                        _ => false,
+                        _ => true,
                     },
-                    _ => false
+                    _ => false,
                 }
             };
             if should_mark_cow {
@@ -614,25 +639,41 @@ impl AddrSpace {
             // clone mappings
             // TODO: Better way to clone mapping
             // TODO: COW for page table
-            for vaddr in
-                PageIter4K::new(area.start(), area.end()).expect("Failed to create page iterator")
-            {
-                match self.pt.query(vaddr) {
-                    Ok((paddr, _, page_size)) => {
-                        new_aspace
-                            .pt
-                            .map(vaddr, paddr, page_size, pte_flags)
-                            .unwrap();
-                        self.pt
-                            .remap(vaddr, paddr, pte_flags)
-                            .map(|(_, tlb)| tlb.flush())
-                            .unwrap();
-                    }
-                    // If the page is not mapped, skip it.
-                    Err(PagingError::NotMapped) => continue,
-                    Err(_) => return Err(AxError::BadAddress),
-                };
+
+            for (vaddr, frame) in &area.frames {
+                let frame = frame.clone();
+                // TODO: dyn page size
+                new_aspace
+                    .pt
+                    .map(*vaddr, frame.start(), PageSize::Size4K, pte_flags)
+                    .unwrap();
+                self.pt
+                    .remap(*vaddr, frame.start(), pte_flags)
+                    .map(|(_, tlb)| tlb.flush())
+                    .unwrap();
             }
+
+            /*
+             *for vaddr in
+             *    PageIter4K::new(area.start(), area.end()).expect("Failed to create page iterator")
+             *{
+             *    match self.pt.query(vaddr) {
+             *        Ok((paddr, _, page_size)) => {
+             *            new_aspace
+             *                .pt
+             *                .map(vaddr, paddr, page_size, pte_flags)
+             *                .unwrap();
+             *            self.pt
+             *                .remap(vaddr, paddr, pte_flags)
+             *                .map(|(_, tlb)| tlb.flush())
+             *                .unwrap();
+             *        }
+             *        // If the page is not mapped, skip it.
+             *        Err(PagingError::NotMapped) => continue,
+             *        Err(_) => return Err(AxError::BadAddress),
+             *    };
+             *}
+             */
             /* May unmapped
              *if pte_flags.contains(MappingFlags::COW) {
              *    self.pt
@@ -672,4 +713,44 @@ impl Drop for AddrSpace {
     fn drop(&mut self) {
         self.clear();
     }
+}
+
+#[macro_export]
+macro_rules! filter_areas_by_va_type {
+    // 规则2: 匹配 Variant(_) 形式，其中 _ 是通配符
+    ($aspace:expr, $variant:ident ( _ )) => {
+        $aspace.filter_areas(|area| {
+            // 解构 Option<VmAreaType>
+            if let Some(vm_type_from_backend) = area.backend().get_vm_type() {
+                // 自动补全 VmAreaType::
+                matches!(vm_type_from_backend, VmAreaType::$variant(_))
+            } else {
+                false // 如果 get_vm_type() 返回 None，则不匹配
+            }
+        })
+    };
+    // 规则1: 匹配 Variant(value) 形式，其中 value 是一个表达式
+    ($aspace:expr, $variant:ident ( $value:expr )) => {
+        $aspace.filter_areas(|area| {
+            // 解构 Option<VmAreaType>
+            if let Some(vm_type_from_backend) = area.backend().get_vm_type() {
+                // 自动补全 VmAreaType::
+                matches!(vm_type_from_backend, VmAreaType::$variant(val) if val == $value)
+            } else {
+                false // 如果 get_vm_type() 返回 None，则不匹配
+            }
+        })
+    };
+    // 规则3: 匹配 Variant 形式 (没有内部值)
+    ($aspace:expr, $variant:ident) => {
+        $aspace.filter_areas(|area| {
+            // 解构 Option<VmAreaType>
+            if let Some(vm_type_from_backend) = area.backend().get_vm_type() {
+                // 自动补全 VmAreaType::
+                matches!(vm_type_from_backend, VmAreaType::$variant)
+            } else {
+                false // 如果 get_vm_type() 返回 None，则不匹配
+            }
+        })
+    };
 }
