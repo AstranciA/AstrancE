@@ -243,3 +243,19 @@ pub fn sys_statfs(
 )->SyscallResult {
     api::sys_statfs(_path,stat_fs)?.to_linux_result()
 }
+
+pub fn sys_truncate(path: *const c_char, len: off_t) -> SyscallResult {
+    api::sys_truncate(path, len)?.to_linux_result()
+}
+pub fn sys_ftruncate(fd: c_int, len: off_t) -> SyscallResult {
+    api::sys_ftruncate(fd, len)?.to_linux_result()
+}
+
+pub fn sys_readlinkat(
+    dirfd: c_int,
+    pathname_p: *const c_char,
+    buf: *mut c_char,
+    bufsize: usize,
+)->SyscallResult {
+    api::sys_readlinkat(dirfd, pathname_p, buf, bufsize)?.to_linux_result()
+}

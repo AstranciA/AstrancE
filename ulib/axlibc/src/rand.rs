@@ -1,5 +1,4 @@
 //! Random number generator.
-
 use core::{
     ffi::{c_int, c_long, c_uint},
     sync::atomic::{AtomicU64, Ordering::SeqCst},

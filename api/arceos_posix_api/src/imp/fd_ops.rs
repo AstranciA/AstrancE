@@ -51,13 +51,20 @@ pub trait FileLike: Send + Sync {
     fn statx(&self) -> LinuxResult<statx> {
         Err(LinuxError::EOPNOTSUPP)
     }
-
     fn read_at(&self, _buf: &mut [u8], _offset: u64) -> LinuxResult<usize> {
         warn!("read_at not implemented for this FileLike");
         Err(LinuxError::EINVAL)
     }
     fn write_at(&self, _buf: &[u8], _offset: u64) -> LinuxResult<usize> {
         warn!("write_at not implemented for this FileLike");
+        Err(LinuxError::EINVAL)
+    }
+    fn truncate(&self, len: u64) -> LinuxResult<usize> {
+        warn!("write_at not implemented for this FileLike");
+        Err(LinuxError::EINVAL)
+    }
+    fn read_link(&self, buf: *mut c_char, bufsize: usize) -> LinuxResult<usize> {
+        warn!("readlink not implemented for this FileLike");
         Err(LinuxError::EINVAL)
     }
     fn into_any(self: Arc<Self>) -> Arc<dyn core::any::Any + Send + Sync>;

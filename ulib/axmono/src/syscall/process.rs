@@ -6,6 +6,8 @@ use arceos_posix_api::{char_ptr_to_str, str_vec_ptr_to_str};
 use axerrno::{AxError, LinuxError, LinuxResult};
 use axtask::{TaskExtRef, current};
 use core::ffi::c_char;
+// use crate::task::{ThreadData, RobustListHead};
+// use core::mem;
 
 pub fn sys_exit(code: i32) -> LinuxResult<isize> {
     task::sys_exit(code);
@@ -136,3 +138,68 @@ pub fn sys_futex() -> LinuxResult<isize> {
     task::sys_exit(-1);
 }
 
+//TODO: the head_ptr type
+
+// pub fn sys_set_robust_list(head_ptr: usize, size: usize) -> LinuxResult {
+//     // size 必须等于用户态的 struct robust_list_head 大小
+//     let expected = mem::size_of::<RobustListHead>();
+//     if size != expected {
+//         return Err(LinuxError::EINVAL);
+//     }
+//
+//     // 简单的用户指针检查：0 表示 NULL，内核允许 NULL（表示没有 robust list）
+//     // 进一步可用 validate_ptr(head_ptr, size, AccessType::Read) 来严格检查
+//     if head_ptr == 0 {
+//         // 清除
+//         let binding = current();
+//         let td = binding.task_ext().thread.data::<ThreadData>()
+//             .ok_or(LinuxError::ESRCH)?; // 或其他合适的错误
+//         td.set_robust_list(0, 0);
+//         return Ok(());
+//     }
+//
+//     // 这里仅记录 head 与 size；不去内核读取用户空间结构
+//     let binding = current();
+//     let td = binding.task_ext().thread.data::<ThreadData>()
+//         .ok_or(LinuxError::ESRCH)?; // 或其他合适的错误
+//     td.set_robust_list(head_ptr, size);
+//
+//     Ok(())
+// }
+
+// pub fn sys_get_robust_list(pid: i32, head_out_ptr: usize, size_out_ptr: usize) -> LinuxResult {
+//     // 参数 head_out_ptr/size_out_ptr 为用户空间写出地址
+//     // 简单检查：不能为 0（内核需要将结果写回用户）
+//     if head_out_ptr == 0 || size_out_ptr == 0 {
+//         return Err(LinuxError::EFAULT);
+//     }
+//
+//     // 找到目标任务
+//     let task = if pid == 0 {
+//         current()
+//     } else {
+//         find_task_by_pid(pid as u64).ok_or(LinuxError::ESRCH)?
+//     };
+//
+//     // 权限检查：这里简化为允许（真实内核有 ptrace 权限检查）
+//     // 取出 thread data
+//     let td = task.task_ext().thread.data::<ThreadData>()
+//         .ok_or(LinuxError::ESRCH)?;
+//
+//     let (head, size) = td.get_robust_list();
+//
+//     // 把 head 和 size 写回用户空间
+//     unsafe {
+//         // head_out_ptr: *mut *mut robust_list_head
+//         let head_ptr = head_out_ptr as *mut usize;
+//         let size_ptr = size_out_ptr as *mut usize;
+//         if head_ptr.is_null() || size_ptr.is_null() {
+//             return Err(LinuxError::EFAULT);
+//         }
+//         // 使用 volatile write 或直接 write 都可（这里用普通 write）
+//         core::ptr::write(head_ptr, head);
+//         core::ptr::write(size_ptr, size);
+//     }
+//
+//     Ok(())
+// }

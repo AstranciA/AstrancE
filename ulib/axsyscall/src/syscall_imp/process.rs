@@ -86,3 +86,8 @@ pub fn sys_setxattr() -> SyscallResult {
 pub fn sys_futex() -> SyscallResult {
     axmono::syscall::process::sys_futex()
 }
+
+#[inline]
+pub fn sys_set_robust_list(head_ptr: usize, size: usize) -> SyscallResult {
+    Ok(0)
+}

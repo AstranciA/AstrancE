@@ -9,8 +9,8 @@ use axsignal::{SigCode, SigCodeSigChld, SigStatus, Signal, SignalSet};
 use crate::task::{process, send_signal_process, ProcessData, SigInfo_};
 use axtask::{TaskExtRef, current};
 use linux_raw_sys::general::SI_KERNEL;
-
 use crate::ptr::{PtrWrapper, UserPtr};
+
 
 pub fn do_exit(exit_code: i32, group_exit: bool) -> ! {
     let curr = current();
@@ -19,6 +19,7 @@ pub fn do_exit(exit_code: i32, group_exit: bool) -> ! {
     let thread = &curr_ext.thread;
     info!("{:?} exit with code: {}", thread, exit_code);
 
+    // process::exit_robust_list(&curr_ext.thread_data());
     let clear_child_tid = UserPtr::<Pid>::from(curr_ext.thread_data().clear_child_tid());
     if let Ok(clear_tid) = clear_child_tid.get() {
         unsafe { clear_tid.write(0) };

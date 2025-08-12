@@ -336,6 +336,10 @@ impl File {
     pub fn remove_xattr(&self, name: *const c_char, name_len: usize) -> AxResult<usize> {
         self.access_node(Cap::WRITE)?.remove_xattr(name, name_len)
     }
+
+    pub fn read_link(&self, buf: *mut c_char, bufsize: usize) -> AxResult<usize> {
+        self.access_node(Cap::WRITE)?.read_link(buf, bufsize)
+    }
 }
 
 impl Directory {

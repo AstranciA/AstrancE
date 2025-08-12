@@ -37,7 +37,7 @@ pub use imp::io::{sys_read, sys_readv, sys_write, sys_writev};
 #[cfg(feature = "fs")]
 pub use imp::path_link::{FilePath, HARDLINK_MANAGER, handle_file_path};
 pub use imp::resources::{sys_getrlimit, sys_prlimit64, sys_setrlimit};
-pub use imp::sys::{UtsName, sys_sysconf, sys_uname, SysInfo, sys_sysinfo};
+pub use imp::sys::{UtsName, sys_sysconf, sys_uname, SysInfo, sys_sysinfo, sys_getrandom};
 pub use imp::task::{sys_exit, sys_getpid, sys_sched_yield};
 pub use imp::time::{sys_clock_gettime, sys_get_time_of_day, sys_nanosleep};
 
@@ -52,7 +52,7 @@ pub use imp::fs::{
     sys_fstat, sys_fstatat, sys_getcwd, sys_getdents, sys_listxattr, sys_lseek, sys_lstat,
     sys_mkdirat, sys_mount, sys_open, sys_openat, sys_pread64, sys_pwrite64, sys_rename,
     sys_renameat, sys_stat, sys_statfs, sys_statx, sys_umount2, sys_unlink, sys_unlinkat,
-    sys_utimensat,
+    sys_utimensat,sys_truncate, sys_ftruncate, sys_readlink, sys_readlinkat,
 };
 #[cfg(feature = "select")]
 pub use imp::io_mpx::{FdSets, set_fd_set, sys_select, zero_fd_set};

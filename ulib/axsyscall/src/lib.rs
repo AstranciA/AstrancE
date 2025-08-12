@@ -25,7 +25,7 @@ use syscalls::Sysno::gettimeofday;
 pub mod result;
 mod utils;
 
-use crate::syscall_imp::fs;
+use crate::syscall_imp::{fs, sys};
 use crate::syscall_imp::fs::{
     sys_flistxattr, sys_fremovexattr, sys_fsetxattr, sys_utimesat, test_stat,
 };
@@ -189,6 +189,15 @@ syscall_handler_def!(
         fremovexattr =>[fd, name,..]{
             apply!(sys_fremovexattr, fd ,name)
         }
+        truncate => [path, len, ..]{
+            apply!(fs::sys_truncate, path, len)
+        }
+        ftruncate => [fd, len, ..]{
+            apply!(fs::sys_ftruncate, fd, len)
+        }
+        readlinkat => [dirfd, path, buf, bufsize,..]{
+            apply!(fs::sys_readlinkat, dirfd, path, buf, bufsize)
+        }
         utimensat =>[dirfd ,path ,times, flags,..]{
             ///Now it can NOT change atime_nec and mtime_nec and support large number like 1LL<<32
             let mut now: timeval = timeval{tv_sec:0, tv_usec:0 };
@@ -319,8 +328,12 @@ syscall_handler_def!(
         setxattr => _ {
             syscall_imp::process::sys_setxattr()
         }
-        sched_yield => _ syscall_imp::task::sys_yield()
-
+        sched_yield => _ {
+            syscall_imp::task::sys_yield()
+        }
+        set_robust_list=>[head, size, ..]{
+            apply!(syscall_imp::process::sys_set_robust_list, head, size)
+        }
         // 时间相关系统调用
         times => [tms_ptr, ..] {
             syscall_imp::time::sys_times(tms_ptr)
@@ -372,6 +385,9 @@ syscall_handler_def!(
         }
         sysinfo => [buf, ..] {
             apply!(syscall_imp::sys::sys_sysinfo, buf)
+        }
+        getrandom => [buf, len, flags, ..] {
+            unsafe{sys::sys_getrandom(buf as _, len as _, flags as _)}
         }
         //网络相关
         #[cfg(feature = "net")]

@@ -194,7 +194,9 @@ pub fn spawn_user_task(
 
     let thread_data = ThreadData {
         clear_child_tid: AtomicUsize::new(0),
-        signal: spawn_signal_ctx()
+        signal: spawn_signal_ctx(),
+        // robust_list_head_ptr: AtomicUsize::new(0),
+        // robust_list_size: AtomicUsize::new(0),
     };
     let thread = process.new_thread(tid).data(thread_data).build();
 

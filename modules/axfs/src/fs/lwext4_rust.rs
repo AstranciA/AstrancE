@@ -432,6 +432,13 @@ impl VfsNodeOps for FileWrapper {
         Ok(0)
     }
 
+    fn read_link(&self, buf: *mut c_char, bufsize: usize) -> VfsResult<usize> {
+        let file = self.0.lock();
+        let ret = file.read_link(buf, bufsize)
+            .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
+        Ok(ret)
+    }
+
     fn create(&self, path: &str, ty: VfsNodeType) -> VfsResult {
         info!("create {:?} on Ext4fs: {}", ty, path);
         let fpath = self.path_deal_with(path);

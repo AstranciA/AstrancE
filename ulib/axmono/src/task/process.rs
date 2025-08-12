@@ -137,6 +137,21 @@ impl Drop for ProcessData {
         }
     }
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct RobustList {
+    next: usize,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct RobustListHead {
+    list: RobustList,
+    futex_offset: isize,
+    pending: *mut RobustList,
+}
+
 /// Extended data for [`Thread`].
 pub struct ThreadData {
     /// The clear thread tid field
@@ -148,6 +163,12 @@ pub struct ThreadData {
     // The thread-level signal manager
     //pub signal: ThreadSignalManager<RawMutex, WaitQueueWrapper>,
     pub signal: Arc<Mutex<SignalContext>>,
+/*
+    /// user-space pointer to struct robust_list_head (0 == NULL)
+    pub robust_list_head_ptr: AtomicUsize,
+    /// size passed by user (0 if not set)
+    pub robust_list_size: AtomicUsize,
+*/
 }
 
 impl ThreadData {
@@ -167,6 +188,8 @@ impl ThreadData {
         Self {
             clear_child_tid: AtomicUsize::new(0),
             signal: signalctx, // FIXME: thread sig ctx
+            // robust_list_head_ptr: AtomicUsize::new(0),
+            // robust_list_size: AtomicUsize::new(0),
         }
     }
 
@@ -188,7 +211,76 @@ impl ThreadData {
     pub fn send_signal(&self, sig: Signal, info: Option<SigInfo>) {
         self.signal.lock().send_signal(sig.into(), info);
     }
+
+    // pub fn set_robust_list(&self, head_ptr: usize, size: usize) {
+    //     self.robust_list_head_ptr.store(head_ptr, Ordering::SeqCst);
+    //     self.robust_list_size.store(size, Ordering::SeqCst);
+    // }
+    // pub fn get_robust_list(&self) -> (usize, usize) {
+    //     (
+    //         self.robust_list_head_ptr.load(Ordering::SeqCst),
+    //         self.robust_list_size.load(Ordering::SeqCst),
+    //     )
+    // }
 }
+
+///TODO: finish the exit of robust list
+/*pub fn exit_robust_list(td: &ThreadData) {
+    let (head_addr, size) = td.robust_list();
+    if head_addr == 0 || size != core::mem::size_of::<RobustListHead>() {
+        return;
+    }
+
+    // 从用户空间拷贝 robust_list_head
+    let mut head: RobustListHead = RobustListHead {
+        list: RobustList { next: 0 },
+        futex_offset: 0,
+        pending: 0,
+    };
+    if copy_from_user(&mut head, head_addr as *const _, size).is_err() {
+        return;
+    }
+
+    let mut futexes: Vec<usize> = Vec::new();
+
+    // 先处理 pending 节点
+    if head.pending != 0 {
+        let futex_addr = (head.pending as isize + head.futex_offset) as usize;
+        futexes.push(futex_addr);
+    }
+
+    // 遍历链表
+    let mut node_ptr = head.list.next;
+    let mut loop_count = 0;
+    while node_ptr != head_addr && node_ptr != 0 {
+        // 防止用户态构造死循环
+        if loop_count > 4096 { break; }
+        loop_count += 1;
+
+        // 读取下一个节点地址
+        let mut node: RobustList = RobustList { next: 0 };
+        if copy_from_user(&mut node, node_ptr as *const _, core::mem::size_of::<RobustList>()).is_err() {
+            break;
+        }
+
+        // 计算 futex 地址
+        let futex_addr = (node_ptr as isize + head.futex_offset) as usize;
+        futexes.push(futex_addr);
+
+        node_ptr = node.next;
+    }
+
+    // 对所有 futex 执行 OWNER_DIED + 唤醒
+    for addr in futexes {
+        let mut val: u32 = 0;
+        if copy_from_user(&mut val, addr as *const _, 4).is_ok() {
+            // 标记 OWNER_DIED，清 tid
+            let new_val = (val & !0x3fffffff) | 0x40000000; // FUTEX_OWNER_DIED
+            let _ = copy_to_user(addr as *mut _, &new_val, 4);
+            futex_wake(addr, 1); // 唤醒一个等待者
+        }
+    }
+}*/
 
 /// fork current task
 /// **Return**

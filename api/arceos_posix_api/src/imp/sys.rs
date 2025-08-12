@@ -1,9 +1,17 @@
-use core::ffi::{CStr, c_char, c_int, c_long, c_ulong, c_ushort};
+#![no_std]
+use core::{
+    sync::atomic::{AtomicU64, Ordering::SeqCst},
+};
+extern crate alloc; // 如果用到 alloc
+use core::ffi::{CStr, c_char, c_int, c_long, c_ulong, c_ushort, c_void, c_uint};
 use axruntime::SYSINFO;
 use core::ptr;
 use crate::{ctypes, utils::str_to_cstr};
+use rand::{RngCore, SeedableRng};
+use rand::rngs::SmallRng;
 
 const PAGE_SIZE_4K: usize = 4096;
+static SEED: AtomicU64 = AtomicU64::new(0xa2ce_a2ce);
 
 /// Return system configuration infomation
 ///
@@ -120,4 +128,39 @@ pub fn sys_sysinfo(buf: *mut SysInfo) -> c_long {
         });
     }
     syscall_body!(sys_sysinfo, Ok(0))
+}
+
+/// 设置随机数种子
+pub fn srand(seed: c_uint) {
+    SEED.store(seed.wrapping_sub(1) as u64, SeqCst);
+}
+
+/// 返回 32 位随机整数
+pub fn rand() -> c_int {
+    let new_seed = SEED.load(SeqCst).wrapping_mul(6364136223846793005) + 1;
+    SEED.store(new_seed, SeqCst);
+    (new_seed >> 33) as c_int
+}
+
+/// 返回 64 位随机整数
+pub fn random() -> c_long {
+    let new_seed = SEED.load(SeqCst).wrapping_mul(6364136223846793005) + 1;
+    SEED.store(new_seed, SeqCst);
+    new_seed as c_long
+}
+
+pub fn fill_random(buf: *mut u8, len: usize) -> usize {
+    let slice = unsafe { core::slice::from_raw_parts_mut(buf, len) };
+    let seed = random() as u64;
+    let mut rng = SmallRng::seed_from_u64(seed);
+    rng.fill_bytes(slice);
+    len
+}
+pub unsafe fn sys_getrandom(
+    buf: *mut c_void,
+    buflen: usize,
+    flags: c_uint
+) -> isize {
+    fill_random(buf as *mut u8, buflen);
+    buflen as isize
 }

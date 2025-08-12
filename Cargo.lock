@@ -640,6 +640,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "axptr"
+version = "0.1.0"
+dependencies = [
+ "axerrno",
+ "axhal",
+ "axmm",
+ "memory_addr",
+]
+
+[[package]]
 name = "axruntime"
 version = "0.1.0"
 dependencies = [
