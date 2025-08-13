@@ -94,6 +94,7 @@ impl AddrSpace {
 
         let start = self.find_and_prepare_vaddr(start, size, flags)?;
 
+        // TODO: 把heap里的frame拿过来
         let mut map_flags: MappingFlags = perm.into();
         map_flags = map_flags | MappingFlags::DEVICE; // Assuming MmapIO is device-like
         debug!(
@@ -159,7 +160,8 @@ impl AddrSpace {
         // For SHM, `populate` means mapping the existing physical pages.
         // The `shm_segment` already holds the `FrameTrackerRef`s.
         if populate {
-            self.populate_shm(shm_segment.clone(), start, size, map_flags).inspect_err(|e|warn!("{e:?}"))?;
+            self.populate_shm(shm_segment.clone(), start, size, map_flags)
+                .inspect_err(|e| warn!("{e:?}"))?;
         }
 
         // Increment attach_count when successfully mapped
@@ -176,7 +178,7 @@ impl AddrSpace {
         flags: MmapFlags,
     ) -> AxResult<VirtAddr> {
         let actual_start = if flags.contains(MmapFlags::MAP_FIXED) {
-            // TODO: check if it's USER
+            // 可能截断Heap, 详见`heap.rs`
             self.unmap(start, size)?;
             start
         } else if flags.contains(MmapFlags::MAP_FIXED_NOREPLACE) {

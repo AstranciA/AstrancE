@@ -2,7 +2,7 @@ use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use axfs::CURRENT_DIR;
-use axfs::api::{DirEntry, create_dir, current_dir, read_dir, remove_file};
+use axfs::api::{DirEntry, create_dir, current_dir, remove_dir, remove_file};
 use axfs::path::join;
 use axfs::root::{ROOT_DIR, RootDirectory};
 use axfs_vfs::{FileSystemInfo, VfsDirEntry, VfsNodeAttr, VfsNodeOps, VfsNodeType};
@@ -1110,11 +1110,66 @@ pub unsafe fn sys_getdents(
     Ok((curr_ptr as usize - buf_start as usize) as isize)
 }
 
+pub fn sys_link(
+    old_dirfd: c_int,
+    old: *const c_char,
+    new_dirfd: c_int,
+    new: *const c_char,
+    _flags: c_int,
+) -> c_int {
+    syscall_body!(sys_link, {
+        let old_path = char_ptr_to_str(old)?;
+        let new_path = char_ptr_to_str(new)?;
+        // 处理相对路径的情况
+        let old_path = if old_path.starts_with('/') {
+            // 如果是绝对路径，直接使用
+            old_path.to_string()
+        } else if old_dirfd == AT_FDCWD as i32 {
+            // 如果 old_dirfd 是 AT_FDCWD，则相对于当前工作目录解析
+            current_dir()
+                .map(|cwd| join(cwd.as_str(), &[old_path]))
+                .unwrap_or(old_path.to_string())
+        } else {
+            // 否则，相对于 old_dirfd 指向的目录解析
+            match Directory::from_fd(old_dirfd) {
+                Ok(old_dir) => join(old_dir.path(), &[old_path]),
+                Err(_) => return Err(LinuxError::EBADF), // 无效的文件描述符
+            }
+        };
+        /*
+         *let old_path = if old_path.starts_with('/') || old_dirfd == AT_FDCWD as i32 {
+         *    old_path.to_string()
+         *} else {
+         *    match Directory::from_fd(old_dirfd) {
+         *        Ok(old_dir) => join(old_dir.path(), &[old_path]),
+         *        Err(_) => return Err(LinuxError::EBADF), // 无效的文件描述符
+         *    }
+         *};
+         */
+        // 处理新路径的情况
+        let new_path = if new_path.starts_with('/') {
+            new_path.to_string()
+        } else if new_dirfd == AT_FDCWD as i32 {
+            current_dir()
+                .map(|cwd| join(cwd.as_str(), &[new_path]))
+                .unwrap_or(new_path.to_string())
+        } else {
+            match Directory::from_fd(new_dirfd) {
+                Ok(new_dir) => join(new_dir.path(), &[new_path]),
+                Err(_) => return Err(LinuxError::EBADF), // 无效的文件描述符
+            }
+        };
+        debug!("sys_link <= old: {:?}, new: {:?}", old_path, new_path);
+        axfs::api::link(&old_path, &new_path)?;
+        Ok(0)
+    })
+}
+
 pub fn sys_unlink(path: *const c_char, flags: c_int) -> LinuxResult<isize> {
     let path = char_ptr_to_str(path).map_err(|_| LinuxError::EFAULT)?;
-    warn!("sys_unlink <= {:?}", path);
+    debug!("sys_unlink <= {:?}", path);
     if flags & AT_REMOVEDIR as i32 != 0 {
-        read_dir(path)?;
+        remove_dir(path)?;
     } else {
         remove_file(path)?;
     }
@@ -1126,7 +1181,7 @@ pub fn sys_unlinkat(dir_fd: i32, path: *const c_char, flags: c_int) -> LinuxResu
     }
     let dir: Arc<Directory> = Directory::from_fd(dir_fd)?;
     let path = char_ptr_to_str(path).map_err(|_| LinuxError::EFAULT)?;
-    warn!("sys_unlinkat <= {dir_fd} {:?}", path);
+    debug!("sys_unlinkat <= {dir_fd} {:?}", path);
     if flags & AT_REMOVEDIR as i32 != 0 {
         dir.inner.lock().remove_dir(path)?;
     } else {

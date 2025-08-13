@@ -131,7 +131,13 @@ syscall_handler_def!(
         #[cfg(all(feature = "fs", feature = "fd"))]
         splice => [fd_in, off_in, fd_out, off_out, size, flag, ..]{
             apply!(syscall_imp::fd::sys_splice, fd_in, off_in, fd_out, off_out, size, flag,)
-       }
+        }
+
+        #[cfg(all(feature = "fs", feature = "fd"))]
+        linkat => [old_dirfd, old_path, new_dirfd, new_path, flags, ..] {
+            apply!(syscall_imp::fs::sys_link, old_dirfd, old_path, new_dirfd, new_path, flags)
+        }
+
         #[cfg(all(feature = "fs", target_arch = "x86_64"))]
         unlink => [path_name, flags, ..] {
              apply!(syscall_imp::fs::sys_unlink, path_name, flags)
@@ -463,6 +469,15 @@ syscall_handler_def!(
             Ok(0)
         }
         fchownat => _ {
+            Ok(0)
+        }
+        fchmod => _ {
+            Ok(0)
+        }
+        fchmodat => _ {
+            Ok(0)
+        }
+        faccessat => _ {
             Ok(0)
         }
         futex => [uaddr, futex_op, val, timeout, uaddr2, val3, ..] {

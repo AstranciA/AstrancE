@@ -97,6 +97,10 @@ pub fn rename(old: &str, new: &str) -> io::Result<()> {
     crate::root::rename(old, new)
 }
 
+pub fn link(old: &str, new: &str) -> io::Result<()> {
+    crate::root::link(old, new)
+}
+
 /// check whether absolute path exists.
 pub fn absolute_path_exists(path: &str) -> bool {
     crate::root::lookup(None, path).is_ok()

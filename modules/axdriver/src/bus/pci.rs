@@ -84,14 +84,15 @@ fn config_pci_device(
 
 impl AllDevices {
     pub(crate) fn probe_bus_devices(&mut self) {
-        warn!("probe bus!");
         cfg_if::cfg_if! {
-            if #[cfg(feature = "fdt")] {
-                warn!("probe with fdt!");
+            if #[cfg(feature = "fdt")]{
                 if let Some(device_tree) = axfdt::FDT.get() {
-                    for node in device_tree.find_compatible(&["starfive,jh7110-pcie"]) {
-                        debug!("Found StarFive JH7110 PCIe controller node: {}", node.name);
+                    if #[cfg(target_arch = "riscv64")] {
+                        for node in device_tree.find_compatible(&["starfive,jh7110-pcie"]) {
+                            debug!("Found StarFive JH7110 PCIe controller node: {}", node.name);
+                        }
                     }
+                    warn!("PCIe driver not implemented");
                 }
             } else {
                 let base_vaddr = phys_to_virt(axconfig::devices::PCI_ECAM_BASE.into());

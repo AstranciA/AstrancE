@@ -142,6 +142,11 @@ pub fn sys_rename(old: *const c_char, new: *const c_char) -> SyscallResult {
 }
 
 #[inline]
+pub fn sys_link(old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char, flags: c_int) -> SyscallResult {
+    api::sys_link(old_dirfd, old_path, new_dirfd, new_path, flags).to_linux_result()
+}
+
+#[inline]
 pub fn sys_mkdirat(dir_fd: usize, dir_path: *const c_char, mode: usize) -> SyscallResult {
     arceos_posix_api::sys_mkdirat(dir_fd as c_int, dir_path, mode.try_into().unwrap())
         .to_linux_result()

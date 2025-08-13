@@ -30,17 +30,8 @@ pub static POST_TRAP: [fn(&mut TrapFrame, bool) -> bool];
 #[allow(unused_macros)]
 macro_rules! handle_trap {
     ($trap:ident, $($args:tt)*) => {{
-        let mut iter = $crate::trap::$trap.iter();
-        if let Some(func) = iter.next() {
-            if iter.next().is_some() {
-                warn!("Multiple handlers for trap {} are not currently supported", stringify!($trap));
-            }
-            func($($args)*)
-        } else {
-            warn!("No registered handler for trap {}", stringify!($trap));
-            false
-        }
-    }}
+        $crate::trap::$trap.iter().all(|func| func($($args)*))
+    }};
 }
 
 #[unsafe(no_mangle)]

@@ -20,6 +20,7 @@ pub(crate) fn devfs() -> Arc<fs::devfs::DeviceFileSystem> {
     // devfs.add("zero", Arc::new(zero));
     devfs.add("null", null.clone());
     devfs.add("zero", zero.clone());
+    devfs.mkdir("shm");
     // devfs.register_device_by_name("sda1",8,0,fs).expect("No Device");
     // devfs.register_device(1, 3, null);
     // devfs.register_device(1, 5, zero);
@@ -68,7 +69,8 @@ pub(crate) fn procfs() -> VfsResult<Arc<fs::procfs::ProcFileSystem>> {
         axconfig::VERSION       // "#1 SMP PREEMPT_DYNAMIC"
     );
 
-    proc_root.create_static_file("version", proc_version_string.as_bytes());
+    proc_root.create_static_file("version", proc_version_string.as_bytes())?;
+    proc_root.create_static_file("config.gz", &[])?;
 
     Ok(Arc::new(procfs))
 }

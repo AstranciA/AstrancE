@@ -2,7 +2,12 @@
 name = "axmm"
 version.workspace = true
 edition.workspace = true
-authors = ["Yuekai Jia <equation618@gmail.com>", "ZreXoc <zeexoc@outlook.com>", "MukioXun <3045859462@qq.com>", "LEOibyug <y2695719556@outlook.com>"]
+authors = [
+  "Yuekai Jia <equation618@gmail.com>",
+  "ZreXoc <zeexoc@outlook.com>",
+  "MukioXun <3045859462@qq.com>",
+  "LEOibyug <y2695719556@outlook.com>",
+]
 description = "ArceOS virtual memory management module"
 license.workspace = true
 homepage.workspace = true
@@ -14,6 +19,8 @@ RAII = ["memory_set/RAII", "memory_addr/RAII"]
 COW = ["RAII"]
 heap = []
 mmap = ["memory_set/mmap"]
+shm = []
+default-features = ["COW", "heap", "mmap", "shm"]
 
 [dependencies]
 axsync = { workspace = true }

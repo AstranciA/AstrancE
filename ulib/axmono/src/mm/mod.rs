@@ -13,6 +13,7 @@ use axhal::{
     mem::{VirtAddr, virt_to_phys},
     paging::MappingFlags,
 };
+use axmm::backend::VmAreaType;
 use axmm::AddrSpace;
 use axtask::{TaskExtRef, current};
 use kernel_elf_parser::{AuxvEntry, AuxvType};
@@ -133,6 +134,7 @@ fn setup_user_stack(
         ustack_size,
         MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
         true,
+        VmAreaType::Stack
     )?;
 
     /*
@@ -173,7 +175,7 @@ fn map_elf_segments(
                     segment.flags
                 );
 
-                uspace.map_alloc(segment.start_va, segment.size, segment.flags, true)?;
+                uspace.map_alloc(segment.start_va, segment.size, segment.flags, true, VmAreaType::Normal)?;
 
                 if !segment.data.is_empty() {
                     uspace.write(segment.start_va + segment.offset, segment.data)?;
@@ -425,7 +427,7 @@ pub fn is_accessing_user_memory() -> bool {
 }
 #[register_trap_handler(PAGE_FAULT)]
 fn handle_page_fault(vaddr: VirtAddr, access_flags: MappingFlags, is_user: bool) -> bool {
-    trace!(
+    debug!(
         "Page fault at {:#x?}, flags: {:#x?}, is_user: {:?}",
         vaddr, access_flags, is_user
     );

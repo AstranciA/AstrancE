@@ -6,7 +6,7 @@ use axsync::Mutex;
 use memory_addr::VirtAddr;
 use memory_set::MappingBackend;
 
-use crate::{AddrSpace, aspace::mmap::MmapIO, shm::ShmSegment};
+use crate::{aspace::mmap::MmapIO, shm::ShmSegment, AddrSpace};
 
 pub mod alloc;
 pub mod frame;
@@ -129,4 +129,18 @@ pub enum VmAreaType {
     Stack,
     Mmap(Arc<dyn MmapIO>),
     Shm(Arc<Mutex<ShmSegment>>),
+}
+
+
+impl core::fmt::Debug for VmAreaType {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            VmAreaType::Normal => write!(f, "Normal"),
+            VmAreaType::Elf => write!(f, "Elf"),
+            VmAreaType::Heap => write!(f, "Heap"),
+            VmAreaType::Stack => write!(f, "Stack"),
+            VmAreaType::Mmap(_) => write!(f, "Mmap"), // 忽略内部数据
+            VmAreaType::Shm(_) => write!(f, "Shm"),   // 忽略内部数据
+        }
+    }
 }

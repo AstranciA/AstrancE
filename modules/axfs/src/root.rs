@@ -208,6 +208,16 @@ impl VfsNodeOps for RootDirectory {
             }
         })
     }
+
+    fn link(&self, src_path: &str, dst_path: &str) -> VfsResult {
+        self.lookup_mounted_fs(src_path, |fs, rest_path| {
+            if rest_path.is_empty() {
+                ax_err!(PermissionDenied) // cannot rename mount points
+            } else {
+                fs.root_dir().link(rest_path, dst_path)
+            }
+        })
+    }
 }
 //disk: crate::dev::Disk
 pub(crate) fn init_rootfs(root_disk: crate::dev::Disk) {
@@ -385,6 +395,13 @@ pub(crate) fn rename(old: &str, new: &str) -> AxResult {
     parent_node_of(None, old).rename(old, new)
 }
 
+pub(crate) fn link(old: &str, new: &str) -> AxResult {
+    if parent_node_of(None, new).lookup(new).is_ok() {
+        warn!("dst file already exist, now remove it");
+        remove_file(None, new)?;
+    }
+    parent_node_of(None, old).link(old, new)
+}
 // pub fn mount(source: &'static str, target: &'static str, flags: usize) -> AxResult {
 //     let img = crate::api::File::open(source)?;
 //     warn!("mounting {} to {}", source, target);

@@ -25,6 +25,11 @@ ifeq ($(MAKECMDGOALS), doc_check_missing)
   RUSTDOCFLAGS += -D missing-docs
 endif
 
+ifeq ($(PLAT_NAME), loongarch64-2k1000)
+  RUSTFLAGS += -C target-feature=-ual
+  $(info $(RUSTFLAGS))
+endif
+
 define cargo_build
   $(call run_cmd,cargo -C $(1) build,$(build_args) --features "$(strip $(2))")
 endef
