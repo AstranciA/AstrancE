@@ -129,6 +129,11 @@ pub fn sys_kill(pid: i32, sig: u32) -> LinuxResult<isize> {
     task::signal::sys_kill(pid, sig)
 }
 
+pub fn sys_tkill(pid: i32, sig: u32) -> LinuxResult<isize> {
+    task::signal::sys_tkill(pid as u32, sig)
+}
+
+
 pub fn sys_setxattr() -> LinuxResult<isize> {
     Ok(0)
 }

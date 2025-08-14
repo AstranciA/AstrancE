@@ -13,7 +13,7 @@ use memory_addr::{VirtAddr, VirtAddrRange};
 
 use crate::{
     mm::trampoline_vaddr,
-    task::{PROCESS_GROUP_TABLE, sys_exit},
+    task::{PROCESS_GROUP_TABLE, exit::do_exit, sys_exit},
 };
 
 use super::{
@@ -30,6 +30,7 @@ pub fn default_signal_handler(signal: Signal, ctx: &mut SignalContext) {
             debug!("kill myself");
             sys_exit(curr.task_ext().thread.process().exit_code());
         }
+        Signal::SIGIOT => do_exit(((SIGIOT & 0x7F) | 0x80) as i32, false),
         _ => {
             // 忽略信号
             debug!("Ignoring signal: {:?}", signal)
@@ -47,6 +48,11 @@ pub fn spawn_signal_ctx() -> Arc<Mutex<SignalContext>> {
     ctx.set_action(Signal::SIGINT, SigAction {
         handler: SigHandler::Default(default_signal_handler),
         mask: SignalSet::SIGINT,
+        flags: SigFlags::empty(),
+    });
+    ctx.set_action(Signal::SIGIOT, SigAction {
+        handler: SigHandler::Default(default_signal_handler),
+        mask: SignalSet::SIGIOT,
         flags: SigFlags::empty(),
     });
 
@@ -278,7 +284,6 @@ pub(crate) fn handle_pending_signals(current_tf: &TrapFrame) {
     // 首先检查进程级别的信号处理
     let mut proc_sigctx = curr.task_ext().process_data().signal.lock();
     if proc_sigctx.has_pending() {
-        warn!("a");
         proc_sigctx.set_current_stack(SignalStackType::Primary);
         match axsignal::handle_pending_signals(
             &mut proc_sigctx,
@@ -309,7 +314,6 @@ pub(crate) fn handle_pending_signals(current_tf: &TrapFrame) {
         .inspect_err(|e| warn!("{e:?}"))
         {
             Ok(Some((mut uctx, _kstack_top))) => {
-                warn!("123");
                 // 交换tf
                 unsafe { write_trapframe_to_kstack(curr.get_kernel_stack_top().unwrap(), &uctx.0) };
                 return;
@@ -326,7 +330,10 @@ pub(crate) fn sys_sigreturn() -> LinuxResult<isize> {
     let (sscratch, mut tf) = {
         let mut sigctx = curr.task_ext().process_data().signal.lock();
         let mut t_sigctx = curr.task_ext().thread_data().signal.lock();
-        t_sigctx.unload().or(sigctx.unload()).expect("No sig frame loaded")
+        t_sigctx
+            .unload()
+            .or(sigctx.unload())
+            .expect("No sig frame loaded")
     };
     // 交换回tf, 返回a0
     unsafe { write_trapframe_to_kstack(curr.get_kernel_stack_top().unwrap(), &tf) };
@@ -444,11 +451,10 @@ pub fn sys_kill(pid: c_int, signo: u32) -> LinuxResult<isize> {
 }
 pub fn sys_tkill(tid: Pid, signo: u32) -> LinuxResult<isize> {
     let Some(sig) = Signal::from_u32(signo) else {
-        warn!("{signo:?}");
+        info!("tkill <= {signo:?}");
         return Ok(0); // 信号无效
     };
     let info = SigInfo_::Generic(SigCodeCommon::SI_USER);
-    warn!("{sig:?}");
     let thr = get_thread(tid)?;
     send_signal_thread(&thr, sig, info)?;
     Ok(0)

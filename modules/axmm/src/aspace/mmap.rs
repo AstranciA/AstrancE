@@ -11,10 +11,10 @@ use memory_set::MemoryArea; // <--- 引入 Mutex
 
 use crate::{
     AddrSpace,
-    Backend,
-    backend::{VmAreaType, alloc::alloc_frame},
+    Backend, // <--- 引入 ShmSegment
+    backend::{VmAreaType, alloc::alloc_frame, frame},
     mapping_err_to_ax_err,
-    shm::ShmSegment, // <--- 引入 ShmSegment
+    shm::ShmSegment,
 };
 
 const MMAP_END: VirtAddr = va!(0x4000_0000);
@@ -260,26 +260,25 @@ impl AddrSpace {
     pub fn populate_shm(
         &mut self,
         shm_segment: Arc<Mutex<ShmSegment>>,
-        start_vaddr: VirtAddr,
+        map_start: VirtAddr,
         total_size: usize,
         flags: MappingFlags,
     ) -> AxResult {
         let shm_segment_locked = shm_segment.lock();
         let segment_pages = &shm_segment_locked.pages;
-        let num_pages = total_size / PageSize::Size4K as usize;
 
-        if num_pages > segment_pages.len() {
-            return ax_err!(InvalidInput, "SHM segment too small for requested size");
-        }
+        let area = self.areas.find_mut(map_start).ok_or(AxError::BadAddress)?;
 
-        let area = self
-            .areas
-            .find_mut(start_vaddr)
-            .ok_or(AxError::BadAddress)?;
+        let area_start = area.start();
+        let frame_start = map_start - area_start;
 
-        for i in 0..num_pages {
-            let vaddr = start_vaddr + i * PageSize::Size4K as usize;
-            let frame = segment_pages[i].clone(); // Get the pre-allocated frame from ShmSegment
+        for (frame_offset, frame) in
+            segment_pages.range(frame_start..(frame_start + map_start.as_usize()))
+        {
+            let vaddr = area_start.wrapping_add(*frame_offset);
+            if area.find_frame(vaddr).is_some() {
+                continue;
+            }
 
             debug!(
                 "Populating SHM: {:?}->{:?}, area:{:?}..{:?}, flags: {:?}",
@@ -298,6 +297,30 @@ impl AddrSpace {
                 .map(|tlb| tlb.flush())
                 .map_err(|_| AxError::BadAddress)?;
         }
+
+        /*
+         *        for i in 0..num_pages {
+         *            let vaddr = map_start + i * PageSize::Size4K as usize;
+         *            let frame = segment_pages[i].clone(); // Get the pre-allocated frame from ShmSegment
+         *
+         *            debug!(
+         *                "Populating SHM: {:?}->{:?}, area:{:?}..{:?}, flags: {:?}",
+         *                vaddr,
+         *                frame.pa,
+         *                area.start(),
+         *                area.end(),
+         *                flags
+         *            );
+         *
+         *            area.insert_frame(vaddr, frame.clone()); // Add to MemoryArea's frame tracking
+         *
+         *            self.pt
+         *                .map(vaddr, frame.pa, PageSize::Size4K, flags)
+         *                .inspect_err(|e| warn!("Error mapping SHM: {:?}", e))
+         *                .map(|tlb| tlb.flush())
+         *                .map_err(|_| AxError::BadAddress)?;
+         *        }
+         */
         Ok(())
     }
 

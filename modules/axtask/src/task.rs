@@ -254,7 +254,6 @@ impl TaskInner {
         let ctx = UnsafeCell::new(TaskContext::new());
         let task_ext = AxTaskExt::empty();
         let tls = TlsArea::alloc();
-        warn!("111");
         let a = Self {
             id,
             name,
@@ -280,7 +279,6 @@ impl TaskInner {
             task_ext,
             tls,
         };
-        warn!("112");
         /*
          *let a = Self {
          *    id,

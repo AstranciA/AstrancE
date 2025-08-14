@@ -61,6 +61,7 @@ impl MmapIO for MmapIOImpl {
             }
             MmapResource::File(file) => {
                 debug!("mmap read file at 0x{start:x}");
+                warn!("{:?}", file.path());
                 let mut file = file.inner().lock();
                 let prev = file.seek(SeekFrom::Current(0))?;
                 let result = file

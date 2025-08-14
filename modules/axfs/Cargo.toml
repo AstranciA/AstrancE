@@ -47,6 +47,7 @@ axns = { workspace = true }
 axconfig = { workspace = true }
 
 axmm = {workspace = true, optional = true}
+memory_addr = { workspace = true }
 
 [dependencies.fatfs]
 git = "https://github.com/rafalh/rust-fatfs"

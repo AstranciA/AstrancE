@@ -110,6 +110,7 @@ fn create_pid_dir_generator() -> Arc<ProcDirGenerator> {
             // TODO: 在这里为该 PID 添加其他文件，如 "cmdline", "status" 等。
             // let cmdline_generator = create_cmdline_file_generator(process.clone());
             // pid_dir.create_dynamic_file("cmdline", cmdline_generator).unwrap();
+            pid_dir.create_static_file("stat", b"");
 
             // 将配置好的 PID 目录添加到要返回的条目列表中
             entries.push((pid.to_string(), ProcEntry::Dir(pid_dir)));

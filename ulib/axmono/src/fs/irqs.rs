@@ -27,10 +27,8 @@ fn generic_irq_counter_handler(scause: usize) -> bool {
     let exception_code = scause & !(1 << (usize::BITS - 1));
     warn!("{scause:x?} {exception_code:x?}");
     if exception_code == IRQ_TIMER {
-        warn!("5");
         add_irq_count(IRQ_TIMER);
     } else {
-        warn!("10");
         // TODO: read irq num
         add_irq_count(10);
     }

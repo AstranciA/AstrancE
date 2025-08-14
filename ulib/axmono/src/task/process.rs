@@ -422,8 +422,6 @@ pub fn clone_task(
         &builder.data(process_data).build()
     };
 
-    warn!("child tid: {}", process.pid());
-
     let thread_data = ThreadData::new(process.data().unwrap());
     if flags.contains(CloneFlags::CHILD_CLEARTID) {
         thread_data.set_clear_child_tid(child_tid as usize);

@@ -19,7 +19,7 @@ members = [
   "examples/shell",
   "examples/TCP_test",
   "ulib/axsyscall",
-  "ulib/axmono", "ulib/axrand",
+  "ulib/axmono",
 ]
 
 [workspace.package]

@@ -22,7 +22,6 @@ pub fn sys_futex(
     let flags = FutexFlags::from_bits_truncate(futex_op);
     let op = FutexOp::try_from(futex_op)?;
     let val_u32 = val as u32;
-    warn!("{op:?}{flags:?}");
 
     let timeout: Option<Duration> = if op == FutexOp::Wait && timeout_ptr > 0 {
         let timespec = unsafe { *(timeout_ptr as *const ctypes::timespec) };

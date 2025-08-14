@@ -4,6 +4,7 @@ use axfs_vfs::{VfsNodeType, VfsOps, VfsResult};
 // use devfile::{DeviceNode,DiskFile};
 use crate::dev::Disk;
 use crate::fs;
+use fs::extra;
 
 #[cfg(feature = "devfs")]
 pub(crate) fn devfs() -> Arc<fs::devfs::DeviceFileSystem> {
@@ -20,7 +21,10 @@ pub(crate) fn devfs() -> Arc<fs::devfs::DeviceFileSystem> {
     // devfs.add("zero", Arc::new(zero));
     devfs.add("null", null.clone());
     devfs.add("zero", zero.clone());
-    devfs.mkdir("shm");
+
+    let shm = Arc::new(extra::devfs::shm::ShmDev::new());
+    devfs.add("shm", shm);
+
     // devfs.register_device_by_name("sda1",8,0,fs).expect("No Device");
     // devfs.register_device(1, 3, null);
     // devfs.register_device(1, 5, zero);
@@ -64,7 +68,7 @@ pub(crate) fn procfs() -> VfsResult<Arc<fs::procfs::ProcFileSystem>> {
         "{} version {} ({}) (rustc {}) {}\n",
         axconfig::SYSNAME,      // "AstrancE"
         axconfig::RELEASE,      // "0.1.0-alpha"
-        axconfig::SYSNAME,         // "builder@astrance.io"
+        axconfig::SYSNAME,      // "builder@astrance.io"
         "rustc 1.86.0-nightly", // 这里可以硬编码或从构建脚本获取编译器版本
         axconfig::VERSION       // "#1 SMP PREEMPT_DYNAMIC"
     );

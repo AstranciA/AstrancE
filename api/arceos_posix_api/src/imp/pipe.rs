@@ -128,7 +128,7 @@ impl FileLike for Pipe {
                 }
                 // 缓冲区为空，写端未关闭，且未读取数据，等待
                 drop(ring_buffer);
-                warn!("pipe waiting for data");
+                debug!("pipe waiting for data");
                 crate::sys_sched_yield(); // TODO: 替换为真正的阻塞机制
                 continue;
             }
@@ -143,8 +143,6 @@ impl FileLike for Pipe {
             // 如果缓冲区已空，检查是否需要返回
             if ring_buffer.available_read() == 0 {
                 if read_size > 0 || self.write_end_close() {
-                    warn!("buffer empty, reading {read_size} in total");
-                    warn!("{buf:?}");
                     return Ok(read_size);
                 }
             }
@@ -237,7 +235,9 @@ impl FileLike for Pipe {
         Ok(())
     }
 
-    fn is_pipe(&self) -> bool { true }
+    fn is_pipe(&self) -> bool {
+        true
+    }
 }
 
 /// Create a pipe

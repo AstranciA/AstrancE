@@ -78,6 +78,18 @@ pub fn sys_kill(pid: i32, sig: u32) -> SyscallResult {
 }
 
 #[inline]
+pub fn sys_tkill(pid: i32, sig: u32) -> SyscallResult {
+    axmono::syscall::process::sys_tkill(pid, sig)
+}
+
+/*
+ *#[inline]
+ *pub fn sys_tgkill(pid: i32, sig: u32) -> SyscallResult {
+ *    axmono::syscall::process::sys_tgkill(pid, sig)
+ *}
+ */
+
+#[inline]
 pub fn sys_setxattr() -> SyscallResult {
     axmono::syscall::process::sys_setxattr()
 }

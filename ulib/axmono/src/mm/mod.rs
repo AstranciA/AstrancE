@@ -13,8 +13,8 @@ use axhal::{
     mem::{VirtAddr, virt_to_phys},
     paging::MappingFlags,
 };
-use axmm::backend::VmAreaType;
 use axmm::AddrSpace;
+use axmm::backend::VmAreaType;
 use axtask::{TaskExtRef, current};
 use kernel_elf_parser::{AuxvEntry, AuxvType};
 use linux_raw_sys::general::{AT_ENTRY, AT_PHDR, AT_PHENT, AT_PHNUM};
@@ -134,7 +134,7 @@ fn setup_user_stack(
         ustack_size,
         MappingFlags::READ | MappingFlags::WRITE | MappingFlags::USER,
         true,
-        VmAreaType::Stack
+        VmAreaType::Stack,
     )?;
 
     /*
@@ -175,7 +175,13 @@ fn map_elf_segments(
                     segment.flags
                 );
 
-                uspace.map_alloc(segment.start_va, segment.size, segment.flags, true, VmAreaType::Normal)?;
+                uspace.map_alloc(
+                    segment.start_va,
+                    segment.size,
+                    segment.flags,
+                    true,
+                    VmAreaType::Normal,
+                )?;
 
                 if !segment.data.is_empty() {
                     uspace.write(segment.start_va + segment.offset, segment.data)?;
@@ -254,6 +260,11 @@ fn map_elf_sections_with_auxv(
 ) -> Result<(VirtAddr, VirtAddr, Option<VirtAddr>), axerrno::AxError> {
     let mut tp: Option<VirtAddr> = None;
     let mut args_ = vec![interp_info.path()];
+    if let Some(args) = args {
+        if args.len() == 0 {
+            return Err(axerrno::AxError::InvalidInput);
+        }
+    }
     warn!("{args_:?} {args:?}");
     args.map(|args| {
         let path = if args[0].starts_with("/") {

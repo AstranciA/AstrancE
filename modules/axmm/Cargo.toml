@@ -20,7 +20,7 @@ COW = ["RAII"]
 heap = []
 mmap = ["memory_set/mmap"]
 shm = []
-default-features = ["COW", "heap", "mmap", "shm"]
+default = ["COW", "heap", "mmap", "shm"]
 
 [dependencies]
 axsync = { workspace = true }

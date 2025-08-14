@@ -10,6 +10,8 @@
  *
  *}
  */
+pub mod extra;
+
 #[cfg(feature = "fatfs")]
 pub mod fatfs;
 #[cfg(feature = "lwext4_rs")]

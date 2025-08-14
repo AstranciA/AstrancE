@@ -328,9 +328,23 @@ syscall_handler_def!(
         getegid => _ {
             syscall_imp::process::sys_getegid()
         }
+        getpgid => _ {
+            Ok(0)
+        }
+        setpgid => _ {
+            Ok(0)
+        }
         kill => [pid, sig, ..] {
             syscall_imp::process::sys_kill(pid as i32, sig as u32)
         }
+        tkill => [tid, sig, ..] {
+            syscall_imp::process::sys_tkill(tid as i32, sig as u32)
+        }
+        /*
+         *tgkill => [tid, sig, ..] {
+         *    syscall_imp::process::sys_tgkill(tid as i32, sig as u32)
+         *}
+         */
         setxattr => _ {
             syscall_imp::process::sys_setxattr()
         }
@@ -530,5 +544,9 @@ syscall_handler_def!(
                     nfds, readfds, writefds, exceptfds, timeout, sigmask
                 )
             }
+        }
+
+        capget => [cap_user_header, cap_user_data, ..] {
+           Ok(0)
         }
 );

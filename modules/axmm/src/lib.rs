@@ -1,6 +1,7 @@
 //! [ArceOS](https://github.com/arceos-org/arceos) memory management module.
 
 #![no_std]
+#![feature(btree_cursors)]
 
 #[macro_use]
 extern crate log;
@@ -28,7 +29,7 @@ use axerrno::{AxError, AxResult};
 use axhal::mem::phys_to_virt;
 use kspin::SpinNoIrq;
 use lazyinit::LazyInit;
-use memory_addr::{PhysAddr, va};
+pub use memory_addr::{PhysAddr, VirtAddr, va};
 use memory_set::MappingError;
 
 static KERNEL_ASPACE: LazyInit<SpinNoIrq<AddrSpace>> = LazyInit::new();

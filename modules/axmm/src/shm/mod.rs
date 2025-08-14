@@ -5,19 +5,21 @@
 //! backing these segments and provides interfaces for mapping them
 //! into process address spaces.
 
+pub mod posix;
+
 use core::num;
 
 use crate::backend::VmAreaType;
 use crate::backend::alloc::{alloc_frame, alloc_nframe};
 use crate::backend::frame::FrameTrackerRef; // <--- 使用 FrameTrackerRef
-use crate::{AddrSpace, Backend};
+use crate::{AddrSpace, Backend, FrameTrackerMap};
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use axerrno::{AxError, LinuxError};
 use axhal::paging::{MappingFlags, PageSize};
 use axsync::Mutex; // Assuming spin::Mutex for simplicity in kernel context
-use memory_addr::{VirtAddr, addr_range}; // <--- 引入 PageSize
+use memory_addr::{FrameTracker, VirtAddr, addr_range}; // <--- 引入 PageSize
 
 // KERNEL_PAGE_SIZE should be defined somewhere, e.g., in axhal::paging
 const KERNEL_PAGE_SIZE: usize = PageSize::Size4K as usize;
@@ -25,21 +27,35 @@ const KERNEL_PAGE_SIZE: usize = PageSize::Size4K as usize;
 /// Represents a single System V Shared Memory Segment
 #[derive(Debug)]
 pub struct ShmSegment {
-    pub id: usize,                   // Unique SHM ID
-    pub key: i32,                    // Key used to create/get the segment
-    pub size: usize,                 // Size of the segment in bytes
-    pub pages: Vec<FrameTrackerRef>, // Physical pages backing this segment
-    pub attach_count: usize,         // Number of processes attached to this segment
-    pub marked_for_deletion: bool,   // New flag for IPC_RMID
+    pub id: usize,                               // Unique SHM ID
+    pub key: i32,                                // Key used to create/get the segment
+    pub size: usize,                             // Size of the segment in bytes
+    pub pages: BTreeMap<usize, FrameTrackerRef>, // Physical pages backing this segment
+    pub attach_count: usize,                     // Number of processes attached to this segment
+    pub marked_for_deletion: bool,               // New flag for IPC_RMID
 }
+
+impl ShmSegment {
+    pub fn new(id: usize, key: i32, size: usize) -> Self {
+        Self {
+            id,
+            key,
+            size,
+            pages: BTreeMap::new(), // Initially empty for POSIX SHM
+            attach_count: 0,
+            marked_for_deletion: false,
+        }
+    }
+}
+
+pub type ShmManager = Mutex<BTreeMap<usize, Arc<Mutex<ShmSegment>>>>;
 
 // Global state for all SHM segments
 // Using a BTreeMap for easy lookup by ID
 // We use Arc<Mutex<ShmSegment>> to allow interior mutability for `attach_count`
 // and potentially a `marked_for_deletion` flag later, without needing to
 // remove and re-insert the segment from the BTreeMap.
-pub static SHM_MANAGER: Mutex<BTreeMap<usize, Arc<Mutex<ShmSegment>>>> =
-    Mutex::new(BTreeMap::new());
+pub static SHM_MANAGER: ShmManager = Mutex::new(BTreeMap::new());
 static NEXT_SHM_ID: Mutex<usize> = Mutex::new(0); // Simple ID allocator
 
 // IPC Flags (simplified, for internal use)
@@ -67,6 +83,18 @@ impl From<ShmError> for LinuxError {
             ShmError::AlreadyExists => LinuxError::EEXIST,
             ShmError::NotFound => LinuxError::ENOENT,
             _ => LinuxError::EFAULT, // Generic error for unhandled cases
+        }
+    }
+}
+
+impl From<ShmError> for AxError {
+    fn from(value: ShmError) -> Self {
+        match value {
+            ShmError::InvalidSize => AxError::InvalidInput,
+            ShmError::NoMemory => AxError::NoMemory,
+            ShmError::AlreadyExists => AxError::AlreadyExists,
+            ShmError::NotFound => AxError::NotFound,
+            _ => AxError::BadState, // Generic error for unhandled cases
         }
     }
 }
@@ -106,7 +134,7 @@ pub fn shm_get(key: i32, size: usize, shmflg: i32) -> Result<Arc<Mutex<ShmSegmen
 }
 
 /// Internal helper to create a new SHM segment.
-fn create_new_shm_segment(
+pub fn create_new_shm_segment(
     manager: &mut BTreeMap<usize, Arc<Mutex<ShmSegment>>>,
     key: i32,
     size: usize,
@@ -119,7 +147,13 @@ fn create_new_shm_segment(
     let num_pages = aligned_size / KERNEL_PAGE_SIZE;
 
     // Allocate physical pages using alloc_nframe
-    let pages = alloc_nframe(num_pages, true).ok_or(ShmError::NoMemory)?;
+
+    let mut pages = BTreeMap::new();
+    let mut offset = 0;
+    for frame in alloc_nframe(num_pages, true).ok_or(ShmError::NoMemory)? {
+        pages.insert(offset, frame.clone());
+        offset += frame.size(); // 假设 FrameTrackerRef 可以被克隆
+    }
 
     let mut next_id = NEXT_SHM_ID.lock();
     let id = *next_id;
@@ -292,4 +326,3 @@ impl Backend {
         None
     }
 }
-

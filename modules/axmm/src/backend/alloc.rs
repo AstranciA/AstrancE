@@ -274,33 +274,36 @@ impl Backend {
                  */
             }
             VmAreaType::Shm(shm_segment) => {
-                // For SHM, the physical frames are *already* allocated and stored in ShmSegment.
-                // We just need to map the correct one.
-                let shm_segment_locked = shm_segment.lock();
-                let page_idx = (vaddr.align_down_4k() - aspace.areas.find(vaddr).unwrap().start())
-                    / (PageSize::Size4K as usize);
-
-                if page_idx >= shm_segment_locked.pages.len() {
-                    error!(
-                        "SHM page fault: index out of bounds for segment pages. vaddr: {:?}, page_idx: {}",
-                        vaddr, page_idx
-                    );
-                    return false;
-                }
-
-                let frame = shm_segment_locked.pages[page_idx].clone(); // Get the pre-allocated frame
-                drop(shm_segment_locked);
-
-                // Map the physical frame into the process's page table
-                aspace
-                    .page_table()
-                    .map(vaddr, frame.pa, PageSize::Size4K, orig_flags)
-                    .map(|tlb| tlb.flush())
-                    .and_then(|_| {
-                        aspace.areas.insert_frame(vaddr, frame.clone());
-                        Ok(())
-                    })
-                    .is_ok()
+                aspace.populate_shm(shm_segment, vaddr, PageSize::Size4K.into(), orig_flags).is_ok()
+                /*
+                 *                // For SHM, the physical frames are *already* allocated and stored in ShmSegment.
+                 *                // We just need to map the correct one.
+                 *                let shm_segment_locked = shm_segment.lock();
+                 *                let page_idx = (vaddr.align_down_4k() - aspace.areas.find(vaddr).unwrap().start())
+                 *                    / (PageSize::Size4K as usize);
+                 *
+                 *                if page_idx >= shm_segment_locked.pages.len() {
+                 *                    error!(
+                 *                        "SHM page fault: index out of bounds for segment pages. vaddr: {:?}, page_idx: {}",
+                 *                        vaddr, page_idx
+                 *                    );
+                 *                    return false;
+                 *                }
+                 *
+                 *                let frame = shm_segment_locked.pages[page_idx].clone(); // Get the pre-allocated frame
+                 *                drop(shm_segment_locked);
+                 *
+                 *                // Map the physical frame into the process's page table
+                 *                aspace
+                 *                    .page_table()
+                 *                    .map(vaddr, frame.pa, PageSize::Size4K, orig_flags)
+                 *                    .map(|tlb| tlb.flush())
+                 *                    .and_then(|_| {
+                 *                        aspace.areas.insert_frame(vaddr, frame.clone());
+                 *                        Ok(())
+                 *                    })
+                 *                    .is_ok()
+                 */
             }
             VmAreaType::Normal | VmAreaType::Stack | VmAreaType::Heap => {
                 if let Some(frame) = alloc_frame(true) {
