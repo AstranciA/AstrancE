@@ -376,6 +376,14 @@ syscall_handler_def!(
             let rem: *mut ctypes::timespec = args[1] as *mut ctypes::timespec;
             syscall_imp::time::sys_nanosleep(req, rem)
         }
+        clock_nanosleep => args {
+            // TODO: handle clock_id and flags
+            let _clock_id = args[0];
+            let _flags = args[1];
+            let req: *const ctypes::timespec = args[2] as *const ctypes::timespec;
+            let rem: *mut ctypes::timespec = args[3] as *mut ctypes::timespec;
+            syscall_imp::time::sys_nanosleep(req, rem)
+        }
         clock_nanosleep_time64 => args {
             // TODO: handle clock_id and flags
             let _clock_id = args[0];
