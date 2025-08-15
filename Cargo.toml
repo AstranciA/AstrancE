@@ -111,6 +111,7 @@ lto = true
 #page_table_entry = { git = "https://github.com/Mivik/page_table_multiarch.git", rev = "19ededd" }
 
 [patch.crates-io]
+weak-map = { git = "https://github.com/Starry-OS/weak-map.git" }
 memory_addr = { version = "0.3.2", path = "./crates/axmm_crates/memory_addr" }
 page_table_multiarch = { path = "./crates/page_table_multiarch/page_table_multiarch" }
 page_table_entry = { path = "./crates/page_table_multiarch/page_table_entry" }
