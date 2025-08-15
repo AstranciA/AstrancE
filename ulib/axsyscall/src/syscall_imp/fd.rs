@@ -37,25 +37,14 @@ pub fn sys_dup3(old_fd: c_int, new_fd: c_int) -> SyscallResult {
 
 #[cfg(feature = "fd")]
 #[inline]
-pub fn sys_cp_file_range(
+pub fn sys_copy_file_range(
     fd_in: c_int,
     off_in: *mut off_t,
     fd_out: c_int,
     off_out: *mut off_t,
     size: size_t, flags: u32,
 ) -> SyscallResult {
-    let off_in_opt: Option<*mut i64> = if off_in.is_null() {
-        None
-    } else {
-        Some(off_in)
-    };
-
-    let off_out_opt: Option<*mut i64> = if off_out.is_null() {
-        None
-    } else {
-        Some(off_out)
-    };
-    api::copy_file_range(fd_in, off_in_opt, fd_out, off_out_opt, size, flags)
+    api::sys_copy_file_range(fd_in, off_in, fd_out, off_out, size, flags)
 }
 
 #[cfg(feature = "fd")]

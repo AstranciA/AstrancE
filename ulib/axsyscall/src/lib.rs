@@ -125,7 +125,7 @@ syscall_handler_def!(
         }
         #[cfg(all(feature = "fs", feature = "fd"))]
         copy_file_range => [fd_in, off_in, fd_out, off_out, size, flag, ..]{
-            apply!(syscall_imp::fd::sys_cp_file_range, fd_in, off_in, fd_out, off_out, size, flag,)
+            apply!(syscall_imp::fd::sys_copy_file_range, fd_in, off_in, fd_out, off_out, size, flag,)
         }
 
         #[cfg(all(feature = "fs", feature = "fd"))]

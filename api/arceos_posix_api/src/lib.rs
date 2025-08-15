@@ -44,7 +44,7 @@ pub use imp::time::{sys_clock_gettime, sys_get_time_of_day, sys_nanosleep};
 #[cfg(feature = "fd")]
 pub use imp::fd_ops::{
     FD_TABLE, FileLike, add_file_like, get_file_like, ps2event, sys_close, sys_dup, sys_dup2,
-    sys_fcntl, sys_ppoll, copy_file_range, splice,
+    sys_fcntl, sys_ppoll, sys_copy_file_range, splice,
 };
 //#[cfg(feature = "fs")]
 pub use imp::fs::{

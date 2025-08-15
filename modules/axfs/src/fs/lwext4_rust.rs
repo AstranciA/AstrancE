@@ -595,9 +595,49 @@ impl VfsNodeOps for FileWrapper {
 
         file.file_seek(offset as i64, SEEK_SET)
             .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
-        let r = file.file_write(buf);
+        //let r = file.file_write(&buf[..buf.len().min(128)]);
+
+        let mut current_offset = offset;
+        let mut total_written = 0;
+        let mut remaining_len = buf.len();
+
+        // TODO: 我不知道为什么有这个奇葩bug, 超过一定字节就无法写入。
+        while remaining_len > 0 {
+            // 计算当前块的长度，不超过 511 字节
+            let chunk_len = remaining_len.min(511);
+            let chunk = &buf[total_written..(total_written + chunk_len)];
+
+            /*
+             * // 移动文件指针到当前写入位置
+             *file.file_seek(current_offset as i64, SEEK_SET)
+             *    .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
+             */
+
+            // 写入当前块
+            let bytes_written_in_chunk = file.file_write(chunk)
+                .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
+
+            if bytes_written_in_chunk == 0 {
+                // 如果写入0字节，可能是文件系统已满或遇到其他错误
+                // 应该返回错误，而不是陷入无限循环
+                warn!("file_write returned 0 bytes, stopping write.");
+                break;
+            }
+
+            // 更新偏移量和已写入总长度
+            current_offset += bytes_written_in_chunk as u64;
+            total_written += bytes_written_in_chunk;
+            remaining_len -= bytes_written_in_chunk;
+
+            // 如果实际写入的字节数小于请求的字节数，说明写入不完整，也应该停止
+            if bytes_written_in_chunk < chunk_len {
+                warn!("file_write wrote less than requested, stopping write.");
+                break;
+            }
+        }
+
         let _ = file.file_close();
-        r.map_err(|e| e.try_into().unwrap())
+        Ok(total_written)
     }
 
     fn truncate(&self, size: u64) -> VfsResult {

@@ -1,23 +1,25 @@
 use crate::ctype_my::statx;
 use crate::ctypes;
+use crate::ctypes::{off_t, size_t, ssize_t};
 use crate::imp::stdio::{stdin, stdout};
+use crate::{
+    utils::check_and_read_user_ptr, utils::copy_from_user, utils::copy_to_user,
+    utils::write_back_user_ptr,
+};
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use alloc::vec;
+use alloc::vec::Vec;
 use axerrno::{LinuxError, LinuxResult, ax_err};
 use axfs_vfs::{VfsNodeAttr, VfsNodeOps, VfsResult};
 use axio::PollState;
+use axio::SeekFrom;
 use axns::{ResArc, def_resource};
 use axtask::yield_now;
-use core::ffi::{c_char, c_int, c_short, c_void};
+use core::ffi::{c_char, c_int, c_short, c_uint, c_void};
 use core::time::Duration;
 use flatten_objects::FlattenObjects;
 use spin::Mutex;
 use spin::{Once, RwLock};
-use crate::ctypes::{off_t, size_t, ssize_t};
-use crate::{utils::check_and_read_user_ptr,utils::write_back_user_ptr,
-            utils::copy_to_user, utils::copy_from_user};
-use axio::SeekFrom;
 pub const AX_FILE_LIMIT: usize = 1024;
 
 static FILE_LIMIT: Mutex<(usize, usize)> = Mutex::new((AX_FILE_LIMIT, AX_FILE_LIMIT));
@@ -426,84 +428,152 @@ fn poll_once(fds: *mut ctypes::pollfd, nfds: ctypes::nfds_t) -> LinuxResult<usiz
     Ok(ready_count)
 }
 
-pub fn copy_file_range(
+pub fn sys_copy_file_range(
     fd_in: c_int,
-    off_in: Option<*mut off_t>,
+    off_in: *mut off_t,
     fd_out: c_int,
-    off_out: Option<*mut off_t>,
-    size: size_t,
-    flags: u32,
+    off_out: *mut off_t,
+    len: size_t,
+    flags: c_uint,
 ) -> Result<isize, LinuxError> {
-    if flags != 0 {
-        return Err(LinuxError::EINVAL);
+    debug!(
+        "sys_copy_file_range <= {} {:?} {} {:?} {} {}",
+        fd_in, off_in, fd_out, off_out, len, flags
+    );
+    if len == 0 {
+        return Ok(0);
     }
-    let mut src = get_file_like(fd_in)?;
-    let mut dst = get_file_like(fd_out)?;
+    // 检查文件描述符是否有效
+    let file_in = get_file_like(fd_in)?;
+    let file_out = get_file_like(fd_out)?;
+    let in_origin_offset = file_in.seek(SeekFrom::Current(0))? as off_t;
+    let out_origin_offset = file_out.seek(SeekFrom::Current(0))? as off_t;
 
-    // TODO: 检查是否是可读/写
-    // if !src.readable() || !dst.writable() {
-    //     return Err(LinuxError::EBADF);
-    // }
-
-    let mut in_offset = if let Some(off_ptr) = off_in {
-        let offset = check_and_read_user_ptr(off_ptr)?; // 用户提供 offset，系统不更新文件 offset
-        Some(offset)
+    // 确定源文件的读取位置
+    let mut current_read_offset: off_t; // 用于内部计算的当前读取偏移
+    let initial_read_offset: off_t; // 复制操作开始时的读取偏移
+    let use_off_in = !off_in.is_null();
+    if use_off_in {
+        // 使用指定的偏移
+        initial_read_offset = unsafe { *off_in };
+        if initial_read_offset < 0 {
+            return Err(LinuxError::EINVAL);
+        }
     } else {
-        None // 使用文件自身偏移
-    };
-    let mut out_offset = if let Some(off_ptr) = off_out {
-        let offset = check_and_read_user_ptr(off_ptr)?;
-        Some(offset)
+        // 使用文件当前偏移
+        initial_read_offset = in_origin_offset
+    }
+    current_read_offset = initial_read_offset;
+
+    // 确定目标文件的写入位置
+    let mut current_write_offset: off_t; // 用于内部计算的当前写入偏移
+    let initial_write_offset: off_t; // 复制操作开始时的写入偏移
+    let use_off_out = !off_out.is_null();
+    if use_off_out {
+        // 使用指定的偏移
+        initial_write_offset = unsafe { *off_out };
+        if initial_write_offset < 0 {
+            return Err(LinuxError::EINVAL);
+        }
     } else {
-        None
-    };
-    // 临时缓冲区
-    const CHUNK_SIZE: usize = 4096;
-    let mut total_copied = 0;
-    let mut buffer = [0u8; CHUNK_SIZE];
+        // 使用文件当前偏移
+        initial_write_offset = out_origin_offset;
+    }
+    current_write_offset = initial_write_offset;
+    debug!("sys_copy_file_range offset: in:{initial_read_offset}, out:{initial_write_offset}");
 
-    while total_copied < size {
-        let to_read = core::cmp::min(CHUNK_SIZE, size - total_copied);
+    // 获取源文件的大小
+    let file_in_size = file_in.stat()?.st_size as off_t;
 
-        // 读取 offset（处理 Option<i64>）
-        let read_off = match in_offset {
-            Some(v) => { if v < 0 { return Err(LinuxError::EINVAL); } v as u64 }
-            None => src.seek(SeekFrom::Current(0))?,
-        };
+    // 如果读取位置超过源文件大小，直接返回0
+    if current_read_offset >= file_in_size {
+        return Ok(0);
+    }
 
-        let read_len = src.read_at(&mut buffer[..to_read], read_off)?;
-        if read_len == 0 {break; }  // EOF
+    // 计算实际可复制的字节数
+    let mut bytes_to_copy = len;
+    // 确保不会读取超过源文件末尾
+    if current_read_offset + (bytes_to_copy as off_t) > file_in_size {
+        bytes_to_copy = (file_in_size - current_read_offset) as usize;
+    }
 
-        let write_off = match out_offset {
-            Some(v) => {if v < 0 { return Err(LinuxError::EINVAL); } v as u64 }
-            None => dst.seek(SeekFrom::Current(0))?,
-        };
+    if bytes_to_copy == 0 {
+        return Ok(0);
+    }
 
-        let written = dst.write_at(&buffer[..read_len], write_off)?;
-        if written == 0 { break;}
+    // 分配缓冲区进行复制
+    const BUFFER_SIZE: usize = 8192; // 每次读取/写入的块大小
+    let mut total_copied: usize = 0;
 
-        total_copied += written;
+    // 循环直到复制完所有请求的字节或源文件读取完毕
+    while total_copied < bytes_to_copy {
+        let chunk_size = core::cmp::min(BUFFER_SIZE, bytes_to_copy - total_copied);
+        let mut buffer = vec![0u8; chunk_size];
 
-        // 更新 offset 变量
-        if let Some(off) = in_offset.as_mut() {
-            *off += written as i64;
-        } else {
-            src.seek(SeekFrom::Current(written as i64))?; // 修改文件 offset
+        // 1. 设置源文件读取位置并读取数据
+        file_in.seek(SeekFrom::Start(current_read_offset as u64))?;
+        let bytes_read = file_in.read(&mut buffer)?;
+        if bytes_read == 0 {
+            // 源文件已无更多数据可读
+            break;
         }
 
-        if let Some(off) = out_offset.as_mut() {
-            *off += written as i64;
-        } else {
-            dst.seek(SeekFrom::Current(written as i64))?;
+        // 2. 处理目标文件空洞：手动填充零
+        let current_out_size = file_out.stat()?.st_size as off_t;
+        if current_write_offset > current_out_size {
+            // 需要填充的零字节数量
+            let padding_len = (current_write_offset - current_out_size) as usize;
+            let zero_buffer = vec![0u8; core::cmp::min(padding_len, BUFFER_SIZE)]; // 使用小块零缓冲区
+            
+            // 将文件指针移动到当前文件末尾
+            file_out.seek(SeekFrom::Start(current_out_size as u64))?;
+            
+            let mut bytes_padded: usize = 0;
+            while bytes_padded < padding_len {
+                let write_len = core::cmp::min(zero_buffer.len(), padding_len - bytes_padded);
+                let written = file_out.write(&zero_buffer[..write_len])?;
+                if written == 0 {
+                    // 写入失败或文件系统已满
+                    return Err(LinuxError::EIO); // 或者其他适当的错误
+                }
+                bytes_padded += written;
+            }
+        }
+        
+        // 3. 设置目标文件写入位置并写入数据
+        file_out.seek(SeekFrom::Start(current_write_offset as u64))?;
+        let bytes_written = file_out.write(&buffer[..bytes_read])?;
+
+        // 4. 更新内部偏移量和总复制字节数
+        current_read_offset += bytes_written as off_t;
+        current_write_offset += bytes_written as off_t;
+        total_copied += bytes_written;
+
+        if bytes_written < bytes_read {
+            // 写入不完整，可能是磁盘已满或写入错误
+            break;
         }
     }
 
-    // 如果偏移指针是 Some，则写回修改后的偏移量
-    if let Some(off_ptr) = off_in {
-        write_back_user_ptr(off_ptr, in_offset.unwrap())?;
+    // 5. 更新外部提供的偏移指针
+    if use_off_in {
+        unsafe {
+            *off_in = current_read_offset;
+        }
+        file_in.seek(SeekFrom::Start(in_origin_offset as u64))?;
+    } else {
+        // 如果不使用外部偏移，则更新文件描述符的内部偏移
+        file_in.seek(SeekFrom::Start(current_read_offset as u64))?;
     }
-    if let Some(off_ptr) = off_out {
-        write_back_user_ptr(off_ptr, out_offset.unwrap())?;
+
+    if use_off_out {
+        unsafe {
+            *off_out = current_write_offset;
+        }
+        file_out.seek(SeekFrom::Start(out_origin_offset as u64))?;
+    } else {
+        // 如果不使用外部偏移，则更新文件描述符的内部偏移
+        file_out.seek(SeekFrom::Start(current_write_offset as u64))?;
     }
 
     Ok(total_copied as isize)
@@ -529,7 +599,10 @@ pub fn splice(
     // 判断是否是管道
     let is_pipe_in = file_in.is_pipe();
     let is_pipe_out = file_out.is_pipe();
-    debug!("splice: is_pipe_in = {}, is_pipe_out = {}", is_pipe_in, is_pipe_out);
+    debug!(
+        "splice: is_pipe_in = {}, is_pipe_out = {}",
+        is_pipe_in, is_pipe_out
+    );
 
     // splice 要求：必须一个是管道，另一个是普通文件
     if is_pipe_in == is_pipe_out {
@@ -564,7 +637,7 @@ pub fn splice(
             }
             let file_size = file_in.stat().map_err(|_| LinuxError::EIO)?.st_size;
             debug!("got stat.st_size = {}", file_size);
-            if val >= file_size{
+            if val >= file_size {
                 debug!("the val is larger than the file_size of {}", val);
                 return Ok(0);
             }
@@ -605,11 +678,15 @@ pub fn splice(
     // 更新偏移
     if !is_pipe_in {
         let new_offset = offset_in + bytes_written as u64;
-        unsafe {copy_to_user(off_in.unwrap(), &(new_offset as off_t))?;}
+        unsafe {
+            copy_to_user(off_in.unwrap(), &(new_offset as off_t))?;
+        }
     }
     if !is_pipe_out {
         let new_offset = offset_out + bytes_written as u64;
-        unsafe {copy_to_user(off_out.unwrap(), &(new_offset as off_t))?;}
+        unsafe {
+            copy_to_user(off_out.unwrap(), &(new_offset as off_t))?;
+        }
     }
 
     Ok(bytes_written as isize)
