@@ -499,7 +499,8 @@ syscall_handler_def!(
         fchmodat => _ {
             Ok(0)
         }
-        faccessat => _ {
+        faccessat => [fd, path, ..] {
+            apply!(syscall_imp::fs::sys_faccessat, fd, path);
             Ok(0)
         }
         futex => [uaddr, futex_op, val, timeout, uaddr2, val3, ..] {

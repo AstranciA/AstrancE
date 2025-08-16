@@ -473,7 +473,7 @@ pub fn exec_current(program_name: &str, args: &[String], envs: &[String]) -> AxR
         ExecType::Elf => load_elf_from_disk(&program_path)
             .inspect_err(|err| debug!("load_elf_from_disk failed: {:?}", err))?,
         ExecType::Shell => {
-            program_path = "/ts/musl/busybox".to_string();
+            program_path = "/usr/bin/busybox".to_string();
             args_.push(program_path.clone());
             args_.push("sh".to_string());
             load_elf_from_disk(program_path.as_str()).unwrap()

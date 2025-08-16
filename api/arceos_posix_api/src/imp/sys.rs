@@ -131,25 +131,25 @@ pub fn sys_sysinfo(buf: *mut SysInfo) -> c_long {
 }
 
 /// 设置随机数种子
-pub fn srand(seed: c_uint) {
+fn srand(seed: c_uint) {
     SEED.store(seed.wrapping_sub(1) as u64, SeqCst);
 }
 
 /// 返回 32 位随机整数
-pub fn rand() -> c_int {
+fn rand() -> c_int {
     let new_seed = SEED.load(SeqCst).wrapping_mul(6364136223846793005) + 1;
     SEED.store(new_seed, SeqCst);
     (new_seed >> 33) as c_int
 }
 
 /// 返回 64 位随机整数
-pub fn random() -> c_long {
+fn random() -> c_long {
     let new_seed = SEED.load(SeqCst).wrapping_mul(6364136223846793005) + 1;
     SEED.store(new_seed, SeqCst);
     new_seed as c_long
 }
 
-pub fn fill_random(buf: *mut u8, len: usize) -> usize {
+fn fill_random(buf: *mut u8, len: usize) -> usize {
     let slice = unsafe { core::slice::from_raw_parts_mut(buf, len) };
     let seed = random() as u64;
     let mut rng = SmallRng::seed_from_u64(seed);

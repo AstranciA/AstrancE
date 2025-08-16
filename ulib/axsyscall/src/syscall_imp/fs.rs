@@ -132,6 +132,13 @@ pub unsafe fn sys_lstat(path: *const c_char, buf: *mut ctypes::stat) -> SyscallR
 }
 
 #[inline]
+pub fn sys_faccessat(fd: c_int, path: *const c_char) -> SyscallResult {
+    let str = char_ptr_to_str(path);
+    debug!("sys_faccessat <= {str:?}");
+    Ok(0)
+}
+
+#[inline]
 pub fn sys_getcwd(buf: *mut c_char, size: usize) -> SyscallResult {
     (api::sys_getcwd(buf, size) as isize).to_linux_result()
 }

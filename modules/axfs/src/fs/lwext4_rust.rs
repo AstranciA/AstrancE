@@ -435,7 +435,7 @@ impl VfsNodeOps for FileWrapper {
     fn read_link(&self, buf: *mut c_char, bufsize: usize) -> VfsResult<usize> {
         let file = self.0.lock();
         let ret = file.read_link(buf, bufsize)
-            .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap())?;
+            .map_err(|e| <i32 as TryInto<AxError>>::try_into(e).unwrap_or(AxError::BadState))?;
         Ok(ret)
     }
 

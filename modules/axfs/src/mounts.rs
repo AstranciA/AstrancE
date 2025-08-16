@@ -14,6 +14,7 @@ pub(crate) fn devfs() -> Arc<fs::devfs::DeviceFileSystem> {
 
     let null = Arc::new(fs::devfs::NullDev);
     let zero = Arc::new(fs::devfs::ZeroDev);
+    let urandom = Arc::new(fs::devfs::URandomDev);
 
     let devfs = fs::devfs::DeviceFileSystem::new();
     // let sda1_dir = devfs.mkdir("sda1");
@@ -21,6 +22,8 @@ pub(crate) fn devfs() -> Arc<fs::devfs::DeviceFileSystem> {
     // devfs.add("zero", Arc::new(zero));
     devfs.add("null", null.clone());
     devfs.add("zero", zero.clone());
+    devfs.add("random", urandom.clone());
+    devfs.add("urandom", urandom.clone());
 
     let shm = Arc::new(extra::devfs::shm::ShmDev::new());
     devfs.add("shm", shm);
