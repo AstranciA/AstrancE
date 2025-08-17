@@ -18,7 +18,7 @@ use axmm::backend::VmAreaType;
 use axtask::{TaskExtRef, current};
 use kernel_elf_parser::{AuxvEntry, AuxvType};
 use linux_raw_sys::general::{AT_ENTRY, AT_PHDR, AT_PHENT, AT_PHNUM};
-use memory_addr::va;
+use memory_addr::{MemoryAddr, va};
 use xmas_elf::ElfFile;
 
 use crate::dynamic::{find_interpreter, load_interpreter, relocate_interpreter_segments};
@@ -166,7 +166,7 @@ fn map_elf_segments(
         match segment.type_ {
             xmas_elf::program::Type::Load => {
                 let segment_end = segment.start_va + segment.size;
-                trace!(
+                debug!(
                     "Mapping ELF segment: [{:#x?}, {:#x?}) -> [{:#x?}, {:#x?}), flags: {:#x?}",
                     segment.start_va + segment.offset,
                     segment_end + segment.offset,
@@ -177,7 +177,7 @@ fn map_elf_segments(
 
                 uspace.map_alloc(
                     segment.start_va,
-                    segment.size,
+                    (segment.offset + segment.size).align_up_4k(),
                     segment.flags,
                     true,
                     VmAreaType::Normal,
@@ -185,10 +185,6 @@ fn map_elf_segments(
 
                 if !segment.data.is_empty() {
                     uspace.write(segment.start_va + segment.offset, segment.data)?;
-                    uspace.fill_zero(
-                        segment.start_va + segment.offset + segment.data.len(),
-                        segment.size - segment.data.len(),
-                    );
                 }
                 // TODO: flush the I-cache
             }
@@ -196,7 +192,7 @@ fn map_elf_segments(
                 *tp = Some(segment.start_va + segment.offset);
             }
             _ => {
-                panic!("Unsupported segment type");
+                return Err(axerrno::AxError::InvalidData)
             }
         }
     }

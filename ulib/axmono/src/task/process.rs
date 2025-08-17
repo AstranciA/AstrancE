@@ -32,7 +32,7 @@ use axio::Read;
 use axmm::{AddrSpace, kernel_aspace};
 use axns::AxNamespace;
 use axprocess::Pid;
-use axsignal::{siginfo::SigInfo, Signal, SignalContext};
+use axsignal::{Signal, SignalContext, siginfo::SigInfo};
 use axsync::Mutex;
 use axtask::{AxTaskRef, TaskExtRef, WaitQueue, current};
 use core::ffi::c_int;
@@ -163,12 +163,12 @@ pub struct ThreadData {
     // The thread-level signal manager
     //pub signal: ThreadSignalManager<RawMutex, WaitQueueWrapper>,
     pub signal: Arc<Mutex<SignalContext>>,
-/*
-    /// user-space pointer to struct robust_list_head (0 == NULL)
-    pub robust_list_head_ptr: AtomicUsize,
-    /// size passed by user (0 if not set)
-    pub robust_list_size: AtomicUsize,
-*/
+    /*
+        /// user-space pointer to struct robust_list_head (0 == NULL)
+        pub robust_list_head_ptr: AtomicUsize,
+        /// size passed by user (0 if not set)
+        pub robust_list_size: AtomicUsize,
+    */
 }
 
 impl ThreadData {
@@ -188,8 +188,8 @@ impl ThreadData {
         Self {
             clear_child_tid: AtomicUsize::new(0),
             signal: signalctx, // FIXME: thread sig ctx
-            // robust_list_head_ptr: AtomicUsize::new(0),
-            // robust_list_size: AtomicUsize::new(0),
+                               // robust_list_head_ptr: AtomicUsize::new(0),
+                               // robust_list_size: AtomicUsize::new(0),
         }
     }
 
@@ -322,7 +322,7 @@ pub fn clone_task(
 
     let child_tid_ref = if flags.contains(CloneFlags::CHILD_SETTID) {
         assert!(child_tid != 0);
-        Some(unsafe { &mut *(child_tid as *mut u32)})
+        Some(unsafe { &mut *(child_tid as *mut u32) })
     } else {
         None
     };
@@ -498,7 +498,7 @@ pub fn exec_current(program_name: &str, args: &[String], envs: &[String]) -> AxR
     aspace.unmap_user_areas()?;
     axhal::arch::flush_tlb(None);
 
-    // 使用之前定义的 load_elf_to_mem 函数加载 ELF 文件到内存
+    // 加载 ELF 文件到内存
     let (entry_point, user_stack_base, thread_pointer) =
         load_elf_to_mem(elf_file, &mut aspace, Some(args_), Some(envs))?;
 
@@ -514,7 +514,7 @@ pub fn exec_current(program_name: &str, args: &[String], envs: &[String]) -> AxR
 
     debug!(
         "exec: enter uspace, entry: {:?}, stack: {:?}",
-        entry_point, user_stack_base,
+        entry_point, user_stack_base
     );
 
     // 设置用户上下文并进入用户空间
