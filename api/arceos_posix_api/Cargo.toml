@@ -9,7 +9,7 @@ authors = [
   "yfblock <321353225@qq.com>",
   "scPointer <bhy18@mails.tsinghua.edu.cn>",
   "Shiping Yuan <robert_yuan@pku.edu.com>",
-   "ZreXoc <zeexoc@outlook.com>",
+  "ZreXoc <zeexoc@outlook.com>",
   "MukioXun <3045859462@qq.com>",
   "LEOibyug <y2695719556@outlook.com>",
 ]
@@ -57,6 +57,6 @@ static_assertions = "1.1.0"
 spin = { version = "0.9" }
 lazy_static = { version = "1.5", features = ["spin_no_std"] }
 ctor_bare = "0.2"
-rand = {version = "0.9.2", default-features = false, features = ["small_rng"]}
+rand = { version = "0.9.2", default-features = false, features = ["small_rng"] }
 [build-dependencies]
 bindgen = { version = "0.69" }

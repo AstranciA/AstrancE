@@ -12,8 +12,10 @@ struct stat {
     uid_t st_uid;             /* user ID of owner*/
     gid_t st_gid;             /* group ID of owner*/
     dev_t st_rdev;            /* device ID (if special file)*/
+    uint32_t __pad1;
     off_t st_size;            /* total size, in bytes*/
     blksize_t st_blksize;     /* blocksize for filesystem I/O*/
+    uint32_t __pad2;
     blkcnt_t st_blocks;       /* number of blocks allocated*/
     struct timespec st_atime; /* time of last access*/
     struct timespec st_mtime; /* time of last modification*/
