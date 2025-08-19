@@ -1,4 +1,5 @@
 use super::context::TrapFrame;
+use super::unaligned::emulate_load_store_insn;
 use loongArch64::register::{
     badv,
     estat::{self, Exception, Trap},
@@ -67,6 +68,7 @@ fn loongarch64_trap_handler(tf: &mut TrapFrame, from_user: bool) {
         Trap::Exception(Exception::Breakpoint) => {
             handle_breakpoint(&mut tf.era);
         }
+        Trap::Exception(Exception::AddressNotAligned) => unsafe { emulate_load_store_insn(tf) },
         Trap::Interrupt(_) => {
             let irq_num: usize = estat.is().trailing_zeros() as usize;
             handle_trap!(IRQ, irq_num);

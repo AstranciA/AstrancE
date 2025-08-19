@@ -138,6 +138,20 @@ cfg_if::cfg_if! {
 }
 
 cfg_if::cfg_if! {
+    if #[cfg(block_dev = "ahci")]{
+        pub struct AhciDriver;
+        register_block_driver!(AhciDriver, axdriver_block::ahci::AhciDriver);
+
+        impl DriverProbe for AhciDriver {
+            fn probe_global() -> Option<AxDeviceEnum> {
+                debug!("using ahci driver");
+                Some(AxDeviceEnum::from_block(axdriver_block::ahci::AhciDriver::new()))
+            }
+        }
+    }
+}
+
+cfg_if::cfg_if! {
     if #[cfg(net_dev = "ixgbe")] {
         use crate::ixgbe::IxgbeHalImpl;
         use axhal::mem::phys_to_virt;

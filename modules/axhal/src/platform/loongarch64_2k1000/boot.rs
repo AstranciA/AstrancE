@@ -22,57 +22,22 @@ unsafe fn init_boot_page_table() {
     unsafe {
         let l1_va = va!(&raw const BOOT_PT_L1 as usize);
         // 0x0000_0000_0000 ~ 0x0080_0000_0000, table
-        BOOT_PT_L0[0] = LA64PTE::new_table(crate::mem::virt_to_phys(l1_va));
-
+        BOOT_PT_L0[0x1ff] = LA64PTE::new_table(crate::mem::virt_to_phys(l1_va));
         // 0x0000_0000..0x4000_0000, VPWXGD, 1G block
-        BOOT_PT_L1[0] = LA64PTE::new_page(
+        BOOT_PT_L1[0x100] = LA64PTE::new_page(
             pa!(0),
             MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE,
             true,
         );
-
         // 0x8000_0000..0xc000_0000, VPWXGD, 1G block
-        BOOT_PT_L1[2] = LA64PTE::new_page(
+        BOOT_PT_L1[0x102] = LA64PTE::new_page(
             pa!(0x8000_0000),
             MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
             true,
         );
-/*
- *        // ===== 新增高地址映射 =====
- *        let l1_high_va = va!(&raw const BOOT_PT_L1_HIGH as usize); 
- *
- *        // 计算高地址映射在L0中的索引 (0xffff_ffc0_0000_0000 的 [38:30])
- *        // (0xffff_ffc0_0000_0000 >> 30) & 1ff = 0x100 (256)
- *        let l0_index = 0x100;
- *        
- *        // 设置L0条目指向新的高地址L1页表
- *        BOOT_PT_L0[l0_index] = LA64PTE::new_table(crate::mem::virt_to_phys(l1_high_va));
- *
- *
- *        // 设置高地址L1页表的三项映射 (1GB巨页)
- *        // 1. 0xffff_ffc0_0000_0000..0xffff_ffc0_4000_0000 -> 0x0..0x4000_0000
- *        BOOT_PT_L1_HIGH[0] = LA64PTE::new_page(
- *            pa!(0),
- *            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::DEVICE,
- *            true,
- *        );
- *        
- *        // 2. 0xffff_ffc0_4000_0000..0xffff_ffc0_8000_0000 -> 0x4000_0000..0x8000_0000
- *        BOOT_PT_L1_HIGH[1] = LA64PTE::new_page(
- *            pa!(0x4000_0000),
- *            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
- *            true,
- *        );
- *        
- *        // 3. 0xffff_ffc0_8000_0000..0xffff_ffc0_c000_0000 -> 0x8000_0000..0xC000_0000
- *        BOOT_PT_L1_HIGH[2] = LA64PTE::new_page(
- *            pa!(0x8000_0000),
- *            MappingFlags::READ | MappingFlags::WRITE | MappingFlags::EXECUTE,
- *            true,
- *        );
- */
     }
 }
+
 
 
 #[inline]
@@ -82,8 +47,8 @@ unsafe fn init_mmu() {
 
     let paddr = crate::mem::virt_to_phys(va!(&raw const BOOT_PT_L0 as usize));
     pgdh::set_base(paddr.as_usize());
-    pgdl::set_base(paddr.as_usize());
-    //pgdl::set_base(0);
+    //pgdl::set_base(paddr.as_usize());
+    pgdl::set_base(0);
     flush_tlb(None);
     crmd::set_pg(true);
 }
@@ -105,6 +70,12 @@ unsafe extern "C" fn _start() -> ! {
             lu52i.d     $t0, $t0, -1792     # CA, PLV0, 0x9000 xxxx xxxx xxxx
             csrwr       $t0, 0x181          # LOONGARCH_CSR_DMWIN1
 
+
+            li.w        $t0, (1 << 5) | (1 << 7) | (1 << 4) # CSR_CRMD_DATF | CSR_CRMD_DATM | CSR_CRMD_PG
+            csrwr       $t0, 0          # LA_CSR_CRMD
+            csrwr       $zero, 1        # LA_CSR_PRMD
+            csrwr       $zero, 2        # LA_CSR_EUEN
+
             # Setup Stack
             la.global   $sp, {boot_stack}
             li.d        $t0, {boot_stack_size}
@@ -113,21 +84,6 @@ unsafe extern "C" fn _start() -> ! {
             # Init MMU
             bl          {init_boot_page_table}
             bl          {init_mmu}          # setup boot page table and enabel MMU
-
-            ori $r12, $r0, 0x41
-            lu12i.w $r13, 0x1fe20
-            ori $r13, $r13, 0x0
-            st.b $r12, $r13, 0
-
-            ori $r12, $r0, 0x42
-            lu12i.w $r13, 0x1fe20
-            ori $r13, $r13, 0x0
-            st.b $r12, $r13, 0
-
-            ori $r12, $r0, 0x43
-            lu12i.w $r13, 0x1fe20
-            ori $r13, $r13, 0x0
-            st.b $r12, $r13, 0
 
             csrrd       $a0, 0x20           # cpuid
             la.global   $t0, {entry}

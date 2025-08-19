@@ -4,8 +4,6 @@ use lazyinit::LazyInit;
 use memory_addr::PhysAddr;
 use ns16550a::Uart;
 
-const UART_BASE: PhysAddr = pa!(axconfig::devices::UART_PADDR);
-
 static UART: LazyInit<SpinNoIrq<Uart>> = LazyInit::new();
 
 /// Writes bytes to the console from input u8 slice.
@@ -33,9 +31,8 @@ pub fn read_bytes(bytes: &mut [u8]) -> usize {
 
 /// Early stage initialization for ns16550a
 pub(super) fn init_early() {
-    //use ns16550a::*;
-    let vaddr = phys_to_virt(UART_BASE);
-    let uart = Uart::new(vaddr.as_usize());
+    let vaddr = axconfig::devices::UART_PADDR + axconfig::plat::DEVICE_DMW_ADDR;
+    let uart = Uart::new(vaddr);
     /*
      *uart.init(
      *    WordLength::EIGHT,

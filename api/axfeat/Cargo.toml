@@ -62,6 +62,7 @@ driver-ixgbe = ["axdriver?/ixgbe"]
 driver-fxmac = ["axdriver?/fxmac"] # fxmac ethernet driver for PhytiumPi
 driver-bcm2835-sdhci = ["axdriver?/bcm2835-sdhci"]
 driver-dw-mshc = ["axdriver?/dw-mshc", "axruntime/fdt"]
+driver-ahci = ["axdriver?/ahci"]
 
 # Logging
 log-level-off = ["axlog/log-level-off"]

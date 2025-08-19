@@ -9,6 +9,8 @@ pub mod misc;
 pub mod mp;
 pub mod time;
 
+pub mod consts;
+
 /// Initializes the platform devices for the primary CPU.
 pub fn platform_init() {}
 
@@ -17,6 +19,7 @@ pub fn platform_init() {}
 pub fn platform_init_secondary() {}
 
 unsafe extern "C" {
+    fn _ekernel();
     fn rust_main(cpu_id: usize, dtb: usize);
     #[cfg(feature = "smp")]
     fn rust_main_secondary(cpu_id: usize);
@@ -29,19 +32,21 @@ unsafe extern "C" fn rust_entry(cpu_id: usize) {
     crate::mem::clear_bss();
     super::console::init_early();
 
-    core::ptr::write_volatile(0x1fe20000 as *mut u8, 0x42);
-
     for _ in 0..10 {
         super::console::write_bytes(b"hello!");
     }
-
-    core::ptr::write_volatile(0x1fe20000 as *mut u8, 0x41);
 
     crate::cpu::init_primary(cpu_id);
     super::time::init_primary();
     super::time::init_percpu();
 
     unsafe {
+        // Notice Key: Clear available range
+        core::slice::from_raw_parts_mut(
+            _ekernel as usize as *mut u8,
+            axconfig::plat::DMW_ADDR + consts::MEMORY_END - _ekernel as usize,
+        )
+        .fill(0);
         rust_main(cpu_id, 0);
     }
 }
@@ -56,8 +61,3 @@ pub(crate) extern "C" fn rust_entry_secondary(cpu_id: usize) {
         rust_main_secondary(cpu_id);
     }
 }
-
-#[cfg(feature = "fdt")]
-pub mod fdt;
-#[cfg(feature = "fdt")]
-pub use fdt::platform_init_fdt;

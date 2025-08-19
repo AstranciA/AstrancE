@@ -54,7 +54,7 @@ pub struct ELFInfo {
     /// The segments of the ELF file
     pub segments: Vec<ELFSegment>,
     /// The auxiliary vectors of the ELF file
-    pub auxv: [AuxvEntry; 17],
+    pub auxv: [AuxvEntry; 16],
 
     _elf: OwnedElfFile,
 }

@@ -95,6 +95,9 @@ impl AllDevices {
                     warn!("PCIe driver not implemented");
                 }
             } else {
+                if axconfig::devices::PCI_ECAM_BASE == 0 {
+                    return;
+                }
                 let base_vaddr = phys_to_virt(axconfig::devices::PCI_ECAM_BASE.into());
                 let mut root = unsafe { PciRoot::new(base_vaddr.as_mut_ptr(), Cam::Ecam) };
 

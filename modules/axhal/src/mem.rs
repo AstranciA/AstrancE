@@ -2,7 +2,7 @@
 
 use core::fmt;
 
-use axconfig::plat::{PHYS_MEMORY_BASE, PHYS_MEMORY_SIZE, PHYS_VIRT_OFFSET};
+use axconfig::plat::{KERNEL_BASE_VADDR, PHYS_MEMORY_BASE, PHYS_MEMORY_SIZE, PHYS_VIRT_OFFSET};
 
 #[doc(no_inline)]
 pub use memory_addr::{MemoryAddr, PAGE_SIZE_4K, PhysAddr, VirtAddr};
@@ -54,6 +54,16 @@ pub struct MemRegion {
 /// `paddr = vaddr - PHYS_VIRT_OFFSET`.
 #[inline]
 pub const fn virt_to_phys(vaddr: VirtAddr) -> PhysAddr {
+
+    #[cfg(all(target_arch = "loongarch64", platform_family = "loongarch64-2k1000"))]
+    if vaddr.as_usize() >> 60 == 0x9 {
+        return pa!(vaddr.as_usize() - 0x9000_0000_0000_0000);
+    }
+    assert!(
+        vaddr.as_usize() >= PHYS_VIRT_OFFSET,
+        "Converted address is invalid, check if the virtual address is in kernel space"
+    );
+
     pa!(vaddr.as_usize() - PHYS_VIRT_OFFSET)
 }
 
@@ -134,7 +144,7 @@ pub(crate) fn default_mmio_regions() -> impl Iterator<Item = MemRegion> {
 #[allow(dead_code)]
 pub(crate) fn default_free_regions() -> impl Iterator<Item = MemRegion> {
     let start = virt_to_phys((_ekernel as usize).into()).align_up_4k();
-    let end = pa!(PHYS_MEMORY_BASE + PHYS_MEMORY_SIZE).align_down_4k();
+    let end = virt_to_phys((KERNEL_BASE_VADDR + PHYS_MEMORY_SIZE).into()).align_up_4k();
     core::iter::once(MemRegion {
         paddr: start,
         size: end.as_usize() - start.as_usize(),
