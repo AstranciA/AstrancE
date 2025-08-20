@@ -87,7 +87,8 @@ impl AllDevices {
         cfg_if::cfg_if! {
             if #[cfg(feature = "fdt")]{
                 if let Some(device_tree) = axfdt::FDT.get() {
-                    if #[cfg(target_arch = "riscv64")] {
+                    #[cfg(target_arch = "riscv64")] 
+                    {
                         for node in device_tree.find_compatible(&["starfive,jh7110-pcie"]) {
                             debug!("Found StarFive JH7110 PCIe controller node: {}", node.name);
                         }

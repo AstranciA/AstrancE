@@ -61,6 +61,7 @@ macro_rules! for_each_drivers {
         }
         #[cfg(block_dev = "dw-mshc")]
         {
+        info!("132");
             type $drv_type = crate::drivers::DwMshcDriver;
             $code
         }

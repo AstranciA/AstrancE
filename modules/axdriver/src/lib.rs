@@ -126,7 +126,9 @@ impl AllDevices {
 
     /// Probes all supported devices.
     fn probe(&mut self) {
+        info!("132");
         for_each_drivers!(type Driver, {
+            info!("132");
             if let Some(dev) = Driver::probe_global() {
                 info!(
                     "registered a new {:?} device: {:?}",
@@ -158,7 +160,6 @@ impl AllDevices {
 pub fn init_drivers() -> AllDevices {
     info!("Initialize device drivers...");
     info!("  device model: {}", AllDevices::device_model());
-
     let mut all_devs = AllDevices::default();
     all_devs.probe();
     let mut aspace = kernel_aspace().lock();

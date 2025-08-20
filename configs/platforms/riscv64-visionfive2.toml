@@ -45,7 +45,8 @@ mmio-regions = [
 ] # [(uint, uint)]
 
 # TODO: JH7110 有两个pci设备
-pci-ecam-base = 0x940000000 # uint
+#pci-ecam-base = 0x940000000 # uint
+pci-ecam-base = 0x0 # uint
 
 # End PCI bus number (`bus-range` property in device tree).
 pci-bus-end = 0xff # uint
