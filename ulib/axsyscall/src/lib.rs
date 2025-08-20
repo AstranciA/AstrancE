@@ -119,10 +119,12 @@ syscall_handler_def!(
         close => [fd, ..] {
             apply!(syscall_imp::fd::sys_close, fd)
         }
-        #[cfg(all(feature = "fs", feature = "fd"))]
-        ioctl =>[fd,op,..]{
-                apply!(syscall_imp::fd::sys_ioctl, fd, op)
-        }
+        /*
+         *#[cfg(all(feature = "fs", feature = "fd"))]
+         *ioctl =>[fd,op,..]{
+         *        apply!(syscall_imp::fd::sys_ioctl, fd, op)
+         *}
+         */
         #[cfg(all(feature = "fs", feature = "fd"))]
         copy_file_range => [fd_in, off_in, fd_out, off_out, size, flag, ..]{
             apply!(syscall_imp::fd::sys_copy_file_range, fd_in, off_in, fd_out, off_out, size, flag,)

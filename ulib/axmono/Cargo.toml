@@ -2,7 +2,11 @@
 name = "axmono"
 version.workspace = true
 edition.workspace = true
-authors = ["ZreXoc <zeexoc@outlook.com>", "MukioXun <3045859462@qq.com>", "LEOibyug <y2695719556@outlook.com>"]
+authors = [
+  "ZreXoc <zeexoc@outlook.com>",
+  "MukioXun <3045859462@qq.com>",
+  "LEOibyug <y2695719556@outlook.com>",
+]
 license.workspace = true
 homepage.workspace = true
 documentation.workspace = true
@@ -48,7 +52,7 @@ kernel-elf-parser = "0.3.2"
 linkme = "0.3.32"
 numeric-enum-macro = { git = "https://github.com/mexus/numeric-enum-macro" }
 syscalls = { workspace = true, optional = true }
-axprocess = { git = "https://github.com/Starry-OS/axprocess.git" }
+axprocess = { path = "../../crates/axprocess" }
 spin = "0.10.0"
 percpu = "0.2.0"
 weak-map = { workspace = true }
