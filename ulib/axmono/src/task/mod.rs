@@ -21,7 +21,6 @@ use core::{
     sync::atomic::{AtomicU64, AtomicUsize},
 };
 use memory_addr::{VirtAddr, VirtAddrRange};
-use time::TimeStat;
 use xmas_elf::symbol_table::Type::File;
 
 use axhal::arch::{TrapFrame, UspaceContext};
@@ -37,6 +36,9 @@ pub use signal::*;
 
 pub mod time;
 pub use time::*;
+
+pub mod timer;
+pub use timer::*;
 
 pub mod process;
 pub use process::*;
@@ -361,6 +363,7 @@ fn pre_trap_handler(trap_frame: &mut TrapFrame, from_user: bool) -> bool {
 fn post_trap_handler(trap_frame: &mut TrapFrame, from_user: bool) -> bool {
     if from_user {
         time_stat_from_kernel_to_user();
+        check_expired_timers();
         handle_pending_signals(trap_frame);
     }
     true

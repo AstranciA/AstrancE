@@ -12,12 +12,12 @@ use syscall_imp::{
 };
 // use axmono::ptr::{get_uspace, validate_reabable};
 mod syscall_imp;
+use arceos_posix_api::SysInfo;
 use arceos_posix_api::ctype_my::statx;
 use arceos_posix_api::ctypes::{pid_t, timespec, timeval};
 use arceos_posix_api::{ctypes, sys_listxattr, sys_pread64, sys_pwrite64};
-use arceos_posix_api::SysInfo;
 use axhal::paging::MappingFlags;
-use axmono::validate_ptr;
+use axmono::{syscall::pthread, validate_ptr};
 use core::ffi::*;
 use core::ptr;
 use syscalls::Sysno::gettimeofday;
@@ -25,12 +25,12 @@ use syscalls::Sysno::gettimeofday;
 pub mod result;
 mod utils;
 
-use crate::syscall_imp::{fs, sys};
 use crate::syscall_imp::fs::{
     sys_flistxattr, sys_fremovexattr, sys_fsetxattr, sys_utimesat, test_stat,
 };
 use crate::syscall_imp::io::sys_write;
 use crate::syscall_imp::time::sys_get_time_of_day;
+use crate::syscall_imp::{fs, sys};
 pub use result::{SyscallResult, ToLinuxResult};
 
 #[macro_export]
@@ -392,6 +392,12 @@ syscall_handler_def!(
             let rem: *mut ctypes::timespec = args[3] as *mut ctypes::timespec;
             syscall_imp::time::sys_nanosleep(req, rem)
         }
+        getitimer => [which, curr, ..] {
+            apply!(syscall_imp::time::sys_getitimer, which, curr)
+        }
+        setitimer => [which, curr, old, ..] {
+            apply!(syscall_imp::time::sys_setitimer, which, curr, old)
+        }
         //资源相关系统调用
         getrlimit => [resource, rlimit, ..] {
             validate_ptr!(rlimit, ctypes::rlimit, MappingFlags::WRITE);
@@ -421,6 +427,11 @@ syscall_handler_def!(
         #[cfg(feature = "net")]
         socket => [domain, socktype, protocol, ..] {
             apply!(syscall_imp::net::sys_socket, domain, socktype, protocol)
+        }
+        #[cfg(feature = "net")]
+        setsockopt => _ {
+            warn!("todo: setsockopt");
+            Ok(0)
         }
         #[cfg(feature = "net")]
         bind => [fd, addr, addrlen, ..] {
@@ -507,8 +518,7 @@ syscall_handler_def!(
             error!("exit futex");
             axmono::task::sys_exit(-1 as i32);
             // 调用 syscall/pthread.rs 中实现的 sys_futex
-            // pthread::sys_futex(uaddr, futex_op, val, timeout as isize, uaddr2, val3)
-            Ok(0)
+             //pthread::sys_futex(uaddr, futex_op, val, timeout as isize, uaddr2, val3)
         }
 
 

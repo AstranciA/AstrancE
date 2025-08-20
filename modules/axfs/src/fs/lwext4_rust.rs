@@ -549,7 +549,7 @@ impl VfsNodeOps for FileWrapper {
     /// Lookup the node with given `path` in the directory.
     /// Return the node if found.
     fn lookup(self: Arc<Self>, path: &str) -> VfsResult<VfsNodeRef> {
-        trace!("lookup ext4fs: {:?}, {}", self.0.lock().get_path(), path);
+        debug!("lookup ext4fs: {:?}, {}", self.0.lock().get_path(), path);
 
         let fpath = self.path_deal_with(path);
         let fpath = fpath.as_str();
@@ -565,6 +565,9 @@ impl VfsNodeOps for FileWrapper {
         } else if file.check_inode_exist(fpath, InodeTypes::EXT4_DE_REG_FILE) {
             trace!("lookup new FILE FileWrapper");
             Ok(Arc::new(Self::new(fpath, InodeTypes::EXT4_DE_REG_FILE)))
+        } else if file.check_inode_exist(fpath, InodeTypes::EXT4_DE_SYMLINK) {
+            debug!("simlink: lookup new FILE FileWrapper");
+            Ok(Arc::new(Self::new(fpath, InodeTypes::EXT4_DE_SYMLINK)))
         } else {
             Err(VfsError::NotFound)
         }

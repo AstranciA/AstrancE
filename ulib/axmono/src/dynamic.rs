@@ -27,10 +27,9 @@ pub(crate) fn find_interpreter(elf: &OwnedElfFile) -> AxResult<Option<String>> {
             .map_err(|_| AxError::InvalidData)?
             .into();
 
-        let interp_basename = base_name(path.as_str()).ok_or(AxError::InvalidInput)?;
-        let interp_path = join(interp_basename.as_str(), &["/lib"]);
+        //let interp_basename = base_name(path.as_str()).ok_or(AxError::InvalidInput)?;
 
-        info!("Found interpreter: {}, using {}", path, interp_path);
+        info!("Found interpreter: {}", path);
         Ok(Some(path))
     } else {
         // 没有解释器段，说明不是动态链接的可执行文件

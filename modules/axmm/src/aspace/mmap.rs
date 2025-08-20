@@ -326,22 +326,35 @@ impl AddrSpace {
 
     pub fn munmap(&mut self, start: VirtAddr, size: usize) -> AxResult {
         // TODO: is it correct?
-        let size = size.align_up_4k();
+        let mut size = size.align_up_4k();
         let end = start + size;
+        let area = match self.areas.find(start) {
+            Some(area) => area,
+            None => return Ok(()),
+        };
+        let area_end = area.end();
+        let area_size = area.size();
+        drop(area);
+        if area_end < end {
+            self.munmap(area_end, size - area_size)?;
+            size = area_size;
+
+            /*
+             *warn!("{:#?}", self);
+             *error!(
+             *    "[{:#x}, {:#x}) out of range [{:#x}, {:#x})",
+             *    start,
+             *    end,
+             *    area_start,
+             *    area_end
+             *);
+             *return ax_err!(BadAddress, "munmap end out of range");
+             */
+        }
         let area = match self.areas.find_mut(start) {
             Some(area) => area,
             None => return Ok(()),
         };
-        if area.end() < end {
-            error!(
-                "[{:#x}, {:#x}) out of range [{:#x}, {:#x})",
-                start,
-                end,
-                area.start(),
-                area.end()
-            );
-            return ax_err!(BadAddress, "munmap end out of range");
-        }
 
         let is_shm = if let Backend::Alloc { va_type, .. } = area.backend() {
             if let VmAreaType::Shm(shm_segment) = va_type {

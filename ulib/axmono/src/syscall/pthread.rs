@@ -33,9 +33,3 @@ pub fn sys_futex(
     // 调用 pthread/mod.rs 中实现的 futex 逻辑
     futex(vaddr, op, val_u32, flags, timeout).map(|_| 0)
 }
-
-// 示例的 sys_pthread 函数，如果不需要可以删除或修改
-pub fn sys_pthread(_arg: usize) -> LinuxResult<isize> {
-    // 这是一个占位符，如果你的 pthread 系统调用有其他功能，可以在这里实现
-    Err(LinuxError::ENOSYS) // Not implemented
-}

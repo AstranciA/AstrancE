@@ -25,7 +25,6 @@ pub const IRQ_TIMER: usize = 5;
 #[register_trap_handler(IRQ)]
 fn generic_irq_counter_handler(scause: usize) -> bool {
     let exception_code = scause & !(1 << (usize::BITS - 1));
-    warn!("{scause:x?} {exception_code:x?}");
     if exception_code == IRQ_TIMER {
         add_irq_count(IRQ_TIMER);
     } else {

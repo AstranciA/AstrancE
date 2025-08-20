@@ -217,6 +217,7 @@ fn from_sockaddr(
     }
 
     let mid = unsafe { *(addr as *const ctypes::sockaddr_in) };
+    warn!("{mid:?}");
     if mid.sin_family != ctypes::AF_INET as u16 {
         return Err(LinuxError::EINVAL);
     }
