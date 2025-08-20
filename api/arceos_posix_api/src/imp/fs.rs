@@ -13,7 +13,9 @@ use static_assertions::assert_eq_size;
 
 use super::fd_ops::{FileLike, get_file_like};
 use crate::ctype_my::{__u32, statx, statx_timestamp};
-use crate::ctypes::{__IncompleteArrayField, AT_FDCWD, AT_REMOVEDIR, stat, time_t, timespec, timeval, off_t};
+use crate::ctypes::{
+    __IncompleteArrayField, AT_FDCWD, AT_REMOVEDIR, off_t, stat, time_t, timespec, timeval,
+};
 use axerrno::{LinuxError, LinuxResult};
 use axfs::fops::OpenOptions;
 use axfs_vfs::structs::VfsNodeAttrX;
@@ -468,6 +470,82 @@ pub unsafe fn sys_fstatat(
     };
     unsafe { *statbuf = stat };
     Ok(0)
+}
+
+/// Check whether the calling process can access the file pathname.
+///
+/// This implementation only checks if the file exists, ignoring the actual access modes.
+///
+/// @param dirfd: Directory file descriptor for relative pathnames
+/// @param pathname_p: Pointer to the pathname to check
+/// @param mode: Access mode to check (F_OK, R_OK, W_OK, X_OK)
+/// @param flags: Additional flags (AT_SYMLINK_NOFOLLOW, AT_EACCESS)
+/// @return 0 on success (file exists), -1 on error
+pub unsafe fn sys_faccessat(
+    dirfd: c_int,
+    pathname_p: *const c_char,
+    mode: c_int,
+    flags: c_int,
+) -> LinuxResult<c_int> {
+    // 将 C 字符串转换为 Rust 字符串，并处理错误
+    let pathname = match char_ptr_to_str(pathname_p) {
+        Ok(s) => s,
+        Err(e) => {
+            debug!("sys_faccessat: failed to convert pathname: {:?}", e);
+            return Err(e.into());
+        }
+    };
+
+    debug!(
+        "sys_faccessat <= {} {:?} {:#o} {:#o}",
+        dirfd, pathname, mode, flags
+    );
+
+    // 处理绝对路径
+    if pathname.starts_with('/') {
+        let dir = ROOT_DIR.clone();
+        // 尝试查找文件，如果文件存在则返回成功
+        match dir.lookup(pathname) {
+            Ok(_) => return Ok(0), // 文件存在，返回成功
+            Err(e) => {
+                debug!("sys_faccessat: lookup failed for {}: {:?}", pathname, e);
+                return Err(e.into()); // 文件不存在，返回错误
+            }
+        }
+    }
+
+    // 处理相对于当前工作目录的路径
+    if dirfd == AT_FDCWD as _ {
+        let dir = CURRENT_DIR.lock().clone();
+        match dir.lookup(pathname) {
+            Ok(_) => return Ok(0), // 文件存在，返回成功
+            Err(e) => {
+                debug!("sys_faccessat: lookup failed for {}: {:?}", pathname, e);
+                return Err(e.into()); // 文件不存在，返回错误
+            }
+        }
+    }
+
+    // 处理相对于指定目录描述符的路径
+    let dir: Arc<Directory> = match Directory::from_fd(dirfd) {
+        Ok(d) => d,
+        Err(e) => {
+            debug!("sys_faccessat: from_fd failed for dirfd {}: {:?}", dirfd, e);
+            return Err(e.into());
+        }
+    };
+
+    // 尝试在指定目录中查找文件
+    match dir.inner.lock().access_at(pathname) {
+        Ok(_) => Ok(0), // 文件存在，返回成功
+        Err(e) => {
+            debug!(
+                "sys_faccessat: lookup in dirfd {} failed for {}: {:?}",
+                dirfd, pathname, e
+            );
+            Err(e.into()) // 文件不存在，返回错误
+        }
+    }
 }
 
 /// Use the function to open file or directory, then add into file descriptor table.
@@ -1348,7 +1426,7 @@ pub fn sys_statfs(mount_point: *const c_char, stat_fs: *mut FileSystemInfo) -> L
 }
 
 pub fn sys_truncate(path: *const c_char, len: off_t) -> LinuxResult<isize> {
-    debug!("syscall sys_truncate<={:?},{:?}",path, len);
+    debug!("syscall sys_truncate<={:?},{:?}", path, len);
     let pathname = match char_ptr_to_str(path) {
         Ok(s) => s,
         Err(e) => {
@@ -1362,18 +1440,18 @@ pub fn sys_truncate(path: *const c_char, len: off_t) -> LinuxResult<isize> {
 }
 
 pub fn sys_ftruncate(fd: c_int, len: off_t) -> LinuxResult<isize> {
-    debug!("syscall sys_ftruncate<={:?},{:?}",fd, len);
+    debug!("syscall sys_ftruncate<={:?},{:?}", fd, len);
     let file = get_file_like(fd).map_err(|_| LinuxError::EBADF)?;
     file.truncate(len as u64)?;
     Ok(0)
 }
 
 ///Read value of a symbolic link
-pub  fn sys_readlink(
+pub fn sys_readlink(
     pathname_p: *const c_char,
     buf: *mut c_char,
     bufsize: usize,
-) -> LinuxResult<c_int>{
+) -> LinuxResult<c_int> {
     if bufsize == 0 {
         return Err(LinuxError::EINVAL);
     }
@@ -1384,12 +1462,14 @@ pub  fn sys_readlink(
             return Err(e.into());
         }
     };
-    debug!("sys_readlink <=  pathname='{}', bufsize={}",  pathname, bufsize);
+    debug!(
+        "sys_readlink <=  pathname='{}', bufsize={}",
+        pathname, bufsize
+    );
     let dir = ROOT_DIR.clone();
     let file = dir.lookup(pathname)?;
     let ret = file.read_link(buf, bufsize).map_err(|_| LinuxError::EIO)?;
     Ok(ret as c_int)
-
 }
 pub fn sys_readlinkat(
     dirfd: c_int,
@@ -1412,7 +1492,10 @@ pub fn sys_readlinkat(
             return Err(e.into()); // 转换为 LinuxError
         }
     };
-    debug!("sys_readlinkat <= dirfd={:?}, pathname='{}', bufsize={}", dirfd, pathname, bufsize);
+    debug!(
+        "sys_readlinkat <= dirfd={:?}, pathname='{}', bufsize={}",
+        dirfd, pathname, bufsize
+    );
     if pathname.starts_with('/') {
         let dir = ROOT_DIR.clone();
         let file = dir.lookup(pathname)?;
@@ -1436,7 +1519,10 @@ pub fn sys_readlinkat(
     let dir: Arc<Directory> = match Directory::from_fd(dirfd) {
         Ok(d) => d,
         Err(e) => {
-            debug!("sys_readlinkat: from_fd failed for dirfd {}: {:?}", dirfd, e);
+            debug!(
+                "sys_readlinkat: from_fd failed for dirfd {}: {:?}",
+                dirfd, e
+            );
             return Err(e.into()); // 转换为 LinuxError
         }
     };
@@ -1447,11 +1533,16 @@ pub fn sys_readlinkat(
     {
         Ok(f) => f,
         Err(e) => {
-            debug!("sys_readlinkat: open_file_at failed for {}: {:?}", pathname, e);
+            debug!(
+                "sys_readlinkat: open_file_at failed for {}: {:?}",
+                pathname, e
+            );
             return Err(e.into()); // 转换为 LinuxError
         }
     };
     let file = File::new(inner_file, pathname.into());
-    let ret = file.read_link(buf, bufsize as usize).map_err(|_| LinuxError::EIO)?;
+    let ret = file
+        .read_link(buf, bufsize as usize)
+        .map_err(|_| LinuxError::EIO)?;
     Ok(ret as c_int)
 }

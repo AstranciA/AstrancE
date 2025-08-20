@@ -377,7 +377,7 @@ impl Directory {
         })
     }
 
-    fn access_at(&self, path: &str) -> AxResult<Option<&VfsNodeRef>> {
+    pub fn access_at(&self, path: &str) -> AxResult<Option<&VfsNodeRef>> {
         if path.starts_with('/') {
             Ok(None)
         } else {

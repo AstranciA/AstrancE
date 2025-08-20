@@ -1,10 +1,13 @@
 use crate::{SyscallResult, ToLinuxResult, result};
-use arceos_posix_api::ctypes::{blkcnt_t, blksize_t, dev_t, gid_t, ino_t, mode_t, nlink_t, off_t, time_t, timespec, timeval, uid_t};
+use arceos_posix_api::ctypes::{
+    blkcnt_t, blksize_t, dev_t, gid_t, ino_t, mode_t, nlink_t, off_t, time_t, timespec, timeval,
+    uid_t,
+};
 use arceos_posix_api::{self as api, char_ptr_to_str, ctypes};
 use axfs::api::set_current_dir;
+use axfs_vfs::FileSystemInfo;
 use axlog::debug;
 use core::ffi::{c_char, c_int, c_long, c_longlong, c_void};
-use axfs_vfs::FileSystemInfo;
 // use ctype_my::statx;
 use api::ctype_my::statx;
 #[repr(C)]
@@ -73,7 +76,6 @@ pub fn sys_lseek(fd: c_int, offset: ctypes::off_t, whence: c_int) -> SyscallResu
 //     api::sys_stat(path, buf).to_linux_result()
 // }
 
-
 #[inline]
 pub unsafe fn sys_stat(path: *const c_char, buf: *mut test_stat) -> SyscallResult {
     let mut stat_buf = ctypes::stat::default();
@@ -90,7 +92,6 @@ pub unsafe fn sys_fstat(fd: c_int, buf: *mut test_stat) -> SyscallResult {
     result
 }
 
-
 #[inline]
 pub fn sys_renameat(
     olddfd: c_int,
@@ -101,7 +102,6 @@ pub fn sys_renameat(
     api::sys_renameat(olddfd, old, newdfd, new).to_linux_result()
 }
 
-
 #[inline]
 pub unsafe fn sys_statx(
     dirfd: c_int,
@@ -109,8 +109,8 @@ pub unsafe fn sys_statx(
     flags: c_int,
     mask: u32,
     statxbuf: *mut statx,
-)->SyscallResult{
-    unsafe{api::sys_statx(dirfd,pathname,flags,mask,statxbuf).map(|r| r as isize)}
+) -> SyscallResult {
+    unsafe { api::sys_statx(dirfd, pathname, flags, mask, statxbuf).map(|r| r as isize) }
 }
 // #[inline]
 // pub unsafe fn sys_fstat(fd: c_int, buf: *mut ctypes::stat) -> SyscallResult {
@@ -132,10 +132,13 @@ pub unsafe fn sys_lstat(path: *const c_char, buf: *mut ctypes::stat) -> SyscallR
 }
 
 #[inline]
-pub fn sys_faccessat(fd: c_int, path: *const c_char) -> SyscallResult {
-    let str = char_ptr_to_str(path);
-    debug!("sys_faccessat <= {str:?}");
-    Ok(0)
+pub fn sys_faccessat(
+    dir_fd: c_int,
+    filename: *const c_char,
+    mode: c_int,
+    flags: c_int,
+) -> SyscallResult {
+    unsafe { api::sys_faccessat(dir_fd, filename, mode, flags).map(|v| v as isize) }
 }
 
 #[inline]
@@ -149,7 +152,13 @@ pub fn sys_rename(old: *const c_char, new: *const c_char) -> SyscallResult {
 }
 
 #[inline]
-pub fn sys_link(old_dirfd: c_int, old_path: *const c_char, new_dirfd: c_int, new_path: *const c_char, flags: c_int) -> SyscallResult {
+pub fn sys_link(
+    old_dirfd: c_int,
+    old_path: *const c_char,
+    new_dirfd: c_int,
+    new_path: *const c_char,
+    flags: c_int,
+) -> SyscallResult {
     api::sys_link(old_dirfd, old_path, new_dirfd, new_path, flags).to_linux_result()
 }
 
@@ -187,8 +196,10 @@ pub fn sys_fgetxattr(
     fd: c_int,
     name: *const c_char,
     buf: *mut c_void,
-    sizes: usize
-) -> SyscallResult { api::sys_fgetxattr(fd, name, buf, sizes).to_linux_result()}
+    sizes: usize,
+) -> SyscallResult {
+    api::sys_fgetxattr(fd, name, buf, sizes).to_linux_result()
+}
 
 pub fn sys_fsetxattr(
     fd: c_int,
@@ -200,20 +211,20 @@ pub fn sys_fsetxattr(
     api::sys_fsetxattr(fd, name, buf, size, flags).to_linux_result()
 }
 
-pub fn sys_flistxattr(
-    fd: c_int,
-    list: *mut c_char,
-    size: usize,
-)->SyscallResult { api::sys_listxattr(fd, list, size).to_linux_result()}
+pub fn sys_flistxattr(fd: c_int, list: *mut c_char, size: usize) -> SyscallResult {
+    api::sys_listxattr(fd, list, size).to_linux_result()
+}
 
-pub fn sys_fremovexattr(
-    fd: c_int,
-    name: *const c_char
-) -> SyscallResult {
+pub fn sys_fremovexattr(fd: c_int, name: *const c_char) -> SyscallResult {
     api::sys_fremovexattr(fd, name).to_linux_result()
 }
 
-pub fn sys_mount(src: *const c_char, mnt: *const c_char, fstype: *const c_char, mntflag: usize) -> SyscallResult {
+pub fn sys_mount(
+    src: *const c_char,
+    mnt: *const c_char,
+    fstype: *const c_char,
+    mntflag: usize,
+) -> SyscallResult {
     api::sys_mount(src, mnt, fstype, mntflag)
 }
 
@@ -224,36 +235,23 @@ pub fn sys_umount2(mnt: *const c_char) -> SyscallResult {
 pub fn sys_utimesat(
     dirfd: c_int,
     path: *const c_char,
-    times:*const timespec,
+    times: *const timespec,
     now: timeval,
-    flags: c_int
+    flags: c_int,
 ) -> SyscallResult {
-   api::sys_utimensat(dirfd,path,times,now,flags)?.to_linux_result()
+    api::sys_utimensat(dirfd, path, times, now, flags)?.to_linux_result()
 }
 
-pub fn sys_pread64(
-    fd: c_int,
-    buf: *mut u8,
-    count:usize,
-    offset:isize
-)->SyscallResult {
+pub fn sys_pread64(fd: c_int, buf: *mut u8, count: usize, offset: isize) -> SyscallResult {
     api::sys_pread64(fd, buf, count, offset)?.to_linux_result()
 }
 
-pub fn sys_pwrite64(
-    fd: c_int,
-    buf: *const u8,
-    count:usize,
-    offset:isize
-) -> SyscallResult{
+pub fn sys_pwrite64(fd: c_int, buf: *const u8, count: usize, offset: isize) -> SyscallResult {
     api::sys_pwrite64(fd, buf, count, offset)?.to_linux_result()
 }
 
-pub fn sys_statfs(
-    _path: *const c_char,
-    stat_fs:*mut FileSystemInfo
-)->SyscallResult {
-    api::sys_statfs(_path,stat_fs)?.to_linux_result()
+pub fn sys_statfs(_path: *const c_char, stat_fs: *mut FileSystemInfo) -> SyscallResult {
+    api::sys_statfs(_path, stat_fs)?.to_linux_result()
 }
 
 pub fn sys_truncate(path: *const c_char, len: off_t) -> SyscallResult {
@@ -268,6 +266,6 @@ pub fn sys_readlinkat(
     pathname_p: *const c_char,
     buf: *mut c_char,
     bufsize: usize,
-)->SyscallResult {
+) -> SyscallResult {
     api::sys_readlinkat(dirfd, pathname_p, buf, bufsize)?.to_linux_result()
 }
