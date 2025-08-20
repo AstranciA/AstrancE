@@ -121,7 +121,7 @@ syscall_handler_def!(
         }
         #[cfg(all(feature = "fs", feature = "fd"))]
         ioctl =>[fd,op,..]{
-                Ok(0)
+                apply!(syscall_imp::fd::sys_ioctl, fd, op)
         }
         #[cfg(all(feature = "fs", feature = "fd"))]
         copy_file_range => [fd_in, off_in, fd_out, off_out, size, flag, ..]{
@@ -514,10 +514,10 @@ syscall_handler_def!(
             apply!(syscall_imp::fs::sys_faccessat, fd, path, mode, flags)
         }
         futex => [uaddr, futex_op, val, timeout, uaddr2, val3, ..] {
-            error!("exit futex");
-            axmono::task::sys_exit(-1 as i32);
+            //error!("exit futex");
+            //axmono::task::sys_exit(-1 as i32);
             // 调用 syscall/pthread.rs 中实现的 sys_futex
-             //pthread::sys_futex(uaddr, futex_op, val, timeout as isize, uaddr2, val3)
+             pthread::sys_futex(uaddr, futex_op, val, timeout as isize, uaddr2, val3)
         }
 
 

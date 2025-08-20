@@ -60,3 +60,45 @@ pub fn read_bytes(bytes: &mut [u8]) -> usize {
     ))
     .value
 }
+
+
+/*
+ *pub fn print_slice_address_raw(data: &mut [u8]) {
+ *    let ptr = data.as_mut_ptr();
+ *    let addr = ptr as usize;
+ *
+ *    // 打印前缀
+ *    write_bytes(b"Slice address: 0x");
+ *
+ *    // 将 usize 地址拆分成 u8 字节并打印
+ *    // 注意：usize 的大小取决于架构 (32位或64位)
+ *    // 这里假设是64位系统，所以拆成8个u8
+ *    // 如果是32位系统，只需要4个u8
+ *    // 为了通用性，可以根据 core::mem::size_of::<usize>() 判断
+ *    let num_bytes = core::mem::size_of::<usize>();
+ *
+ *    // 遍历每个字节，从最高位开始
+ *    for i in (0..num_bytes).rev() {
+ *        let byte = ((addr >> (i * 8)) & 0xFF) as u8;
+ *
+ *        // 将字节转换为十六进制字符并打印
+ *        let high_nibble = (byte >> 4) & 0x0F;
+ *        let low_nibble = byte & 0x0F;
+ *
+ *        let hex_char_high = if high_nibble < 10 {
+ *            b'0' + high_nibble
+ *        } else {
+ *            b'a' + (high_nibble - 10)
+ *        };
+ *        let hex_char_low = if low_nibble < 10 {
+ *            b'0' + low_nibble
+ *        } else {
+ *            b'a' + (low_nibble - 10)
+ *        };
+ *
+ *        write_bytes(&[hex_char_high]);
+ *        write_bytes(&[hex_char_low]);
+ *    }
+ *    write_bytes(b"\n");
+ *}
+ */

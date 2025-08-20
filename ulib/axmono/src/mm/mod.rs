@@ -263,29 +263,31 @@ fn map_elf_sections_with_auxv(
     }
     warn!("{args_:?} {args:?}");
     args.map(|args| {
-        let path = if args[0].starts_with("/") {
-            args[0].clone()
-        } else {
-            let pwd = if let Some(envs) = envs {
-                get_pwd_from_envs(envs)
-                    .1
-                    .or(if let Ok(pwd) = current_dir() {
-                        Some(pwd)
-                    } else {
-                        None
-                    })
-            } else if let Ok(pwd) = current_dir() {
-                Some(pwd)
-            } else {
-                None
-            };
-            if let Some(pwd) = pwd {
-                canonicalize(args[0].as_str(), Some(pwd.as_str()))
-            } else {
-                args[0].clone()
-            }
-        };
-        args_.push(path);
+        /*
+         *let path = if args[0].starts_with("/") {
+         *    args[0].clone()
+         *} else {
+         *    let pwd = if let Some(envs) = envs {
+         *        get_pwd_from_envs(envs)
+         *            .1
+         *            .or(if let Ok(pwd) = current_dir() {
+         *                Some(pwd)
+         *            } else {
+         *                None
+         *            })
+         *    } else if let Ok(pwd) = current_dir() {
+         *        Some(pwd)
+         *    } else {
+         *        None
+         *    };
+         *    if let Some(pwd) = pwd {
+         *        canonicalize(args[0].as_str(), Some(pwd.as_str()))
+         *    } else {
+         *        args[0].clone()
+         *    }
+         *};
+         */
+        args_.push(main_elf_info.path());
         args_.extend_from_slice(&args[1..])
     });
     let mut envs_ = Vec::new();

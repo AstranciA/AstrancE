@@ -54,7 +54,6 @@ pub struct MemRegion {
 /// `paddr = vaddr - PHYS_VIRT_OFFSET`.
 #[inline]
 pub const fn virt_to_phys(vaddr: VirtAddr) -> PhysAddr {
-
     #[cfg(all(target_arch = "loongarch64", platform_family = "loongarch64-2k1000"))]
     if vaddr.as_usize() >> 60 == 0x9 {
         return pa!(vaddr.as_usize() - 0x9000_0000_0000_0000);

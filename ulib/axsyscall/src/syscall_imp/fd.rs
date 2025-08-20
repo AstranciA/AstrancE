@@ -81,3 +81,9 @@ pub fn sys_ppoll(
 ) -> SyscallResult {
     api::sys_ppoll(fds, nfds, timeout_ts, sigmask).to_linux_result()
 }
+
+#[cfg(feature = "fd")]
+#[inline]
+pub fn sys_ioctl(fd: c_int, op: usize) -> SyscallResult {
+    api::sys_ioctl(fd, op, 0, 0, 0).to_linux_result()
+}
